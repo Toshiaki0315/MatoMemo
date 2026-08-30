@@ -118,8 +118,10 @@ function drawItems(
   // 付箋の文字が読みづらくなるため。
   drawConnectors(ctx, options, items);
 
-  const baseOptions =
-    options.images !== undefined ? { images: options.images } : {};
+  const baseOptions = {
+    scale: viewport.scale,
+    ...(options.images !== undefined ? { images: options.images } : {}),
+  };
   for (const item of items) {
     drawItem(ctx, item, {
       ...baseOptions,
@@ -189,8 +191,10 @@ function drawConnectors(
     const selected = connector.id === options.selectedConnectorId;
     drawConnector(ctx, path, options.viewport.scale, {
       selected,
-      arrowStart: connector.arrowStart,
-      arrowEnd: connector.arrowEnd,
+      startCap: connector.startCap,
+      endCap: connector.endCap,
+      capSize: connector.capSize,
+      stroke: connector,
     });
     if (selected) {
       drawConnectorHandles(ctx, path, options.viewport.scale);

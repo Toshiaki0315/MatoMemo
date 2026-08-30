@@ -10,7 +10,15 @@
  */
 
 import {
+  BOXED_TEXT_DEFAULTS,
+  DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_SHAPE_FILL,
+  DEFAULT_STROKE,
+  CAP_SIZES,
+  END_CAPS,
+  STANDALONE_TEXT_DEFAULTS,
   STICKY_COLORS,
+  STROKE_STYLES,
   TEXT_ALIGNS,
   TEXT_VERTICAL_ALIGNS,
   type Board,
@@ -18,9 +26,14 @@ import {
   type ConnectorKind,
   type Item,
   type ShapeKind,
+  type CapSize,
+  type EndCap,
   type StickyColor,
+  type StrokeSettings,
+  type StrokeStyle,
   type TextAlign,
   type TextAlignment,
+  type TextStyle,
   type TextVerticalAlign,
 } from "./board";
 
@@ -124,26 +137,68 @@ function readEnum<T extends string>(
   return value as T;
 }
 
-/** 配置の既定値。項目が無い古いファイルではこれを使う。 */
-const BOXED_ALIGNMENT: TextAlignment = {
-  align: "center",
-  verticalAlign: "middle",
-};
-const STANDALONE_ALIGNMENT: TextAlignment = {
-  align: "left",
-  verticalAlign: "top",
-};
-
 /**
- * テキストの配置を読み出す。
- * 後から追加した項目なので、無い場合は種類ごとの既定値で補う。
+ * 線の見た目を読み出す。
+ * 後から追加した項目なので、無い場合は用途ごとの既定値で補う。
  */
-function readAlignment(
+function readStroke(
   source: Record<string, unknown>,
-  fallback: TextAlignment,
+  fallback: StrokeSettings,
   path: string,
   issues: Issues,
-): TextAlignment {
+): StrokeSettings {
+  return {
+    strokeWidth:
+      source["strokeWidth"] === undefined
+        ? fallback.strokeWidth
+        : readNumber(source, "strokeWidth", path, issues, 1),
+    strokeStyle:
+      source["strokeStyle"] === undefined
+        ? fallback.strokeStyle
+        : readEnum<StrokeStyle>(
+            source,
+            "strokeStyle",
+            STROKE_STYLES,
+            fallback.strokeStyle,
+            path,
+            issues,
+          ),
+  };
+}
+
+/**
+ * 図形の塗りを読み出す。
+ * null は「塗らない」を表す。項目が無ければ以前の見た目（白）にする。
+ */
+function readFill(
+  source: Record<string, unknown>,
+  path: string,
+  issues: Issues,
+): string | null {
+  const value = source["fill"];
+  if (value === undefined) {
+    return DEFAULT_SHAPE_FILL;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    issues.push(`${path}.fill は色の文字列か null である必要があります`);
+    return DEFAULT_SHAPE_FILL;
+  }
+  return value;
+}
+
+/**
+ * テキストの配置と書体を読み出す。
+ * 後から追加した項目なので、無い場合は種類ごとの既定値で補う。
+ */
+function readTextSettings(
+  source: Record<string, unknown>,
+  fallback: TextAlignment & TextStyle,
+  path: string,
+  issues: Issues,
+): TextAlignment & TextStyle {
   return {
     align:
       source["align"] === undefined
@@ -167,6 +222,14 @@ function readAlignment(
             path,
             issues,
           ),
+    fontFamily:
+      source["fontFamily"] === undefined
+        ? fallback.fontFamily
+        : readString(source, "fontFamily", path, issues),
+    fontSize:
+      source["fontSize"] === undefined
+        ? fallback.fontSize
+        : readNumber(source, "fontSize", path, issues, 1),
   };
 }
 
@@ -189,7 +252,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "sticky":
       return {
         ...base,
-        ...readAlignment(raw, BOXED_ALIGNMENT, path, issues),
+        ...readTextSettings(raw, BOXED_TEXT_DEFAULTS, path, issues),
         type: "sticky",
         text: readString(raw, "text", path, issues),
         color: readEnum<StickyColor>(
@@ -204,7 +267,9 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "shape":
       return {
         ...base,
-        ...readAlignment(raw, BOXED_ALIGNMENT, path, issues),
+        ...readTextSettings(raw, BOXED_TEXT_DEFAULTS, path, issues),
+        ...readStroke(raw, DEFAULT_STROKE, path, issues),
+        fill: readFill(raw, path, issues),
         type: "shape",
         shape: readEnum<ShapeKind>(
           raw,
@@ -219,11 +284,9 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "text":
       return {
         ...base,
-        ...readAlignment(raw, STANDALONE_ALIGNMENT, path, issues),
+        ...readTextSettings(raw, STANDALONE_TEXT_DEFAULTS, path, issues),
         type: "text",
         text: readString(raw, "text", path, issues),
-        fontFamily: readString(raw, "fontFamily", path, issues),
-        fontSize: readNumber(raw, "fontSize", path, issues, 1),
       };
     case "image":
       return {
@@ -250,6 +313,7 @@ function parseConnector(
     return null;
   }
   return {
+    ...readStroke(raw, DEFAULT_CONNECTOR_STROKE, path, issues),
     id: readId(raw, "id", path, issues),
     kind: readEnum<ConnectorKind>(
       raw,
@@ -261,35 +325,46 @@ function parseConnector(
     ),
     fromItemId: readId(raw, "fromItemId", path, issues),
     toItemId: readId(raw, "toItemId", path, issues),
-    arrowStart: readOptionalBoolean(raw, "arrowStart", path, issues),
-    // 以前は終点の矢印だけを arrow で持っていた。古いファイルはその値を
-    // 終点の矢印として読む。
-    arrowEnd:
-      raw["arrowEnd"] === undefined
-        ? readOptionalBoolean(raw, "arrow", path, issues)
-        : readOptionalBoolean(raw, "arrowEnd", path, issues),
+    // 以前は矢印の有無だけを真偽値で持っていた。古いファイルはその値を
+    // 「矢印」の印として読む。
+    startCap: readCap(raw, "startCap", ["arrowStart"], path, issues),
+    endCap: readCap(raw, "endCap", ["arrowEnd", "arrow"], path, issues),
+    capSize:
+      raw["capSize"] === undefined
+        ? "medium"
+        : readEnum<CapSize>(raw, "capSize", CAP_SIZES, "medium", path, issues),
   };
 }
 
 /**
- * 真偽値を読み出す。項目が無い場合は false とみなす。
- * 後から追加した項目を、古い保存ファイルでも読めるようにするため。
+ * 端の印を読み出す。
+ *
+ * 以前は矢印の有無を真偽値で持っていた。現行の項目が無ければ、
+ * 古い項目を「矢印」の印として読み替える。
+ * @param legacyKeys 古い形式の項目名。先に見つかったものを使う
  */
-function readOptionalBoolean(
+function readCap(
   source: Record<string, unknown>,
   key: string,
+  legacyKeys: readonly string[],
   path: string,
   issues: Issues,
-): boolean {
-  const value = source[key];
-  if (value === undefined) {
-    return false;
+): EndCap {
+  if (source[key] !== undefined) {
+    return readEnum<EndCap>(source, key, END_CAPS, "none", path, issues);
   }
-  if (typeof value !== "boolean") {
-    issues.push(`${path}.${key} は真偽値である必要があります`);
-    return false;
+  for (const legacy of legacyKeys) {
+    const value = source[legacy];
+    if (value === undefined) {
+      continue;
+    }
+    if (typeof value !== "boolean") {
+      issues.push(`${path}.${legacy} は真偽値である必要があります`);
+      return "none";
+    }
+    return value ? "arrow" : "none";
   }
-  return value;
+  return "none";
 }
 
 /** 配列を読み出す。配列でない場合は問題を記録して空配列を返す。 */

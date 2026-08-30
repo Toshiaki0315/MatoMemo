@@ -17,6 +17,7 @@ import {
   type Connector,
   type ConnectorId,
   type ConnectorKind,
+  type EndCap,
   type Item,
   type ItemId,
 } from "../domain/board";
@@ -115,9 +116,12 @@ export interface BoardState {
     fromItemId: ItemId,
     toItemId: ItemId,
     kind: ConnectorKind,
-    arrows?: { readonly start?: boolean; readonly end?: boolean },
+    caps?: { readonly start?: EndCap; readonly end?: EndCap },
   ): ConnectorId | null;
-  /** 既存のコネクタの指定した端の矢印を切り替える。 */
+  /**
+   * 既存のコネクタの指定した端の印を切り替える。
+   * 何も付いていなければ矢印にし、付いていれば外す。
+   */
   toggleConnectorArrow(id: ConnectorId, end: "from" | "to"): void;
   /** コネクタの設定を差し替える。 */
   replaceConnector(connector: Connector): void;
@@ -385,7 +389,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      connectItems(fromItemId, toItemId, kind, arrows = {}) {
+      connectItems(fromItemId, toItemId, kind, caps = {}) {
         // 自分自身への接続は線として描けないため作らない
         if (fromItemId === toItemId) {
           return null;
@@ -412,8 +416,8 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
                 fromItemId,
                 toItemId,
                 kind,
-                arrowStart: arrows.start ?? false,
-                arrowEnd: arrows.end ?? false,
+                startCap: caps.start ?? "none",
+                endCap: caps.end ?? "none",
               }),
             ),
           ),
@@ -486,9 +490,13 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
             if (connector.id !== id) {
               return connector;
             }
+            const toggled: EndCap =
+              (end === "from" ? connector.startCap : connector.endCap) === "none"
+                ? "arrow"
+                : "none";
             return end === "from"
-              ? { ...connector, arrowStart: !connector.arrowStart }
-              : { ...connector, arrowEnd: !connector.arrowEnd };
+              ? { ...connector, startCap: toggled }
+              : { ...connector, endCap: toggled };
           });
           return withBoard(state, { ...state.board, connectors });
         });

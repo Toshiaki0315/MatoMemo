@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createShape, createStickyNote, type Item } from "./board";
 import {
-  ARROW_LENGTH,
+  CAP_LENGTHS,
   arrowHead,
   connectorEnds,
   boundaryAnchor,
@@ -289,7 +289,7 @@ describe("arrowHead", () => {
       (head?.left.x ?? 0) - (head?.tip.x ?? 0),
       (head?.left.y ?? 0) - (head?.tip.y ?? 0),
     );
-    expect(length).toBeCloseTo(ARROW_LENGTH, 10);
+    expect(length).toBeCloseTo(CAP_LENGTHS.medium, 10);
   });
 
   it("折れ線では最後の区間の向きに合わせる", () => {
@@ -429,5 +429,30 @@ describe("arrowHead: 始点側", () => {
     expect(
       arrowHead({ kind: "polyline", points: [{ x: 0, y: 0 }] }, "from"),
     ).toBeNull();
+  });
+});
+
+describe("arrowHead: 大きさ", () => {
+  const path = {
+    kind: "polyline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ],
+  } as const;
+
+  it("指定した長さの矢羽根を作る", () => {
+    const head = arrowHead(path, "to", 30);
+    expect(
+      Math.hypot(
+        (head?.left.x ?? 0) - (head?.tip.x ?? 0),
+        (head?.left.y ?? 0) - (head?.tip.y ?? 0),
+      ),
+    ).toBeCloseTo(30, 10);
+  });
+
+  it("大きさの指定は小・中・大で異なる", () => {
+    expect(CAP_LENGTHS.small).toBeLessThan(CAP_LENGTHS.medium);
+    expect(CAP_LENGTHS.medium).toBeLessThan(CAP_LENGTHS.large);
   });
 });

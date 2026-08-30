@@ -37,6 +37,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ConnectorPropertiesPanel } from "./ConnectorPropertiesPanel";
 import { ContextMenu } from "./ContextMenu";
 import { FileBar } from "./FileBar";
+import { ShapePropertiesPanel } from "./ShapePropertiesPanel";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
 import { Toolbar, type ConnectorArrows } from "./Toolbar";
@@ -379,8 +380,14 @@ export function App({
         return;
       }
       connectItems(connectingFrom, id, connectorKind, {
-        start: connectorArrows === "start" || connectorArrows === "both",
-        end: connectorArrows === "end" || connectorArrows === "both",
+        start:
+          connectorArrows === "start" || connectorArrows === "both"
+            ? "arrow"
+            : "none",
+        end:
+          connectorArrows === "end" || connectorArrows === "both"
+            ? "arrow"
+            : "none",
       });
       // 続けて別の線を引けるよう、始点を空にしてモードは維持する
       setConnectingFrom(null);
@@ -536,6 +543,10 @@ export function App({
 
         {isTextEditable(soleSelected) ? (
           <TextPropertiesPanel item={soleSelected} onChange={replaceItem} />
+        ) : null}
+
+        {soleSelected?.type === "shape" ? (
+          <ShapePropertiesPanel item={soleSelected} onChange={replaceItem} />
         ) : null}
       </div>
 

@@ -4,11 +4,7 @@
  * テキストアイテムを 1 つだけ選んでいるときに現れる。
  */
 
-import type {
-  TextAlign,
-  TextVerticalAlign,
-  TextItem,
-} from "../domain/board";
+import type { TextAlign, TextVerticalAlign } from "../domain/board";
 import type { TextEditableItem } from "./ItemTextEditor";
 
 /** 選べるフォント。macOS に標準で入っているものに絞る。 */
@@ -52,10 +48,6 @@ export function TextPropertiesPanel({
   item,
   onChange,
 }: TextPropertiesPanelProps) {
-  // フォントの設定は単体テキストにだけ意味がある。
-  // 付箋や図形の内部テキストは書式を揃えたいので固定している。
-  const font = item.type === "text" ? (item as TextItem) : null;
-
   return (
     <div className="text-properties" role="group" aria-label="テキストの設定">
       <label>
@@ -95,7 +87,7 @@ export function TextPropertiesPanel({
         </select>
       </label>
 
-      {font === null ? null : <FontControls item={font} onChange={onChange} />}
+      <FontControls item={item} onChange={onChange} />
     </div>
   );
 }
@@ -105,8 +97,8 @@ function FontControls({
   item,
   onChange,
 }: {
-  readonly item: TextItem;
-  readonly onChange: (item: TextItem) => void;
+  readonly item: TextEditableItem;
+  readonly onChange: (item: TextEditableItem) => void;
 }) {
   return (
     <>

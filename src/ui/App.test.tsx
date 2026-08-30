@@ -366,14 +366,16 @@ describe("App: フォント設定", () => {
     ).toBeInTheDocument();
   });
 
-  it("付箋を選ぶと配置の設定は出るがフォントの設定は出ない", () => {
+  it("付箋を選ぶと配置もフォントも設定できる", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
-    expect(
-      screen.getByRole("group", { name: "テキストの設定" }),
-    ).toBeInTheDocument();
     expect(screen.getByLabelText("横位置")).toBeInTheDocument();
-    expect(screen.queryByLabelText("フォント")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("フォント")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("サイズ"), {
+      target: { value: "32" },
+    });
+    expect(store.getState().board.items[0]).toMatchObject({ fontSize: 32 });
   });
 
   it("何も選んでいなければ出さない", () => {
@@ -800,8 +802,8 @@ describe("App: コネクタ", () => {
     clickItem(0);
     clickItem(1);
     expect(store.getState().board.connectors[0]).toMatchObject({
-      arrowStart: true,
-      arrowEnd: true,
+      startCap: "arrow",
+      endCap: "arrow",
     });
   });
 
@@ -821,7 +823,7 @@ describe("App: コネクタ", () => {
     fireEvent.click(
       screen.getByRole("menuitem", { name: "終点の矢印を切り替え" }),
     );
-    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(true);
+    expect(store.getState().board.connectors[0]?.endCap).toBe("arrow");
   });
 
   it("メニューから始点の矢印も切り替えられる", () => {
@@ -841,8 +843,8 @@ describe("App: コネクタ", () => {
       screen.getByRole("menuitem", { name: "始点の矢印を切り替え" }),
     );
     expect(store.getState().board.connectors[0]).toMatchObject({
-      arrowStart: true,
-      arrowEnd: false,
+      startCap: "arrow",
+      endCap: "none",
     });
   });
 
@@ -1141,12 +1143,14 @@ describe("App: 線の選択と編集", () => {
     expect(store.getState().board.connectors[0]?.kind).toBe("curved");
   });
 
-  it("後から矢印を付けられる", () => {
+  it("後から端の印を変えられる", () => {
     renderApp();
     setupConnected();
     clickConnector();
-    fireEvent.click(screen.getByRole("checkbox", { name: "終点の矢印" }));
-    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(true);
+    fireEvent.change(screen.getByLabelText("終点"), {
+      target: { value: "circle" },
+    });
+    expect(store.getState().board.connectors[0]?.endCap).toBe("circle");
   });
 
   it("パネルから線を削除できる", () => {

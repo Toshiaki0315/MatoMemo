@@ -46,6 +46,46 @@ export interface TextAlignment {
   readonly verticalAlign: TextVerticalAlign;
 }
 
+/** 線の種類。 */
+export const STROKE_STYLES = ["solid", "dashed", "dotted", "dashDot"] as const;
+export type StrokeStyle = (typeof STROKE_STYLES)[number];
+
+/** 選べる線の太さ (px)。 */
+export const STROKE_WIDTHS = [1, 2, 3, 5, 8] as const;
+
+/** 線の見た目。図形の枠線とコネクタで共通に使う。 */
+export interface StrokeSettings {
+  /** 太さ (画面 px)。拡大率によらず一定に見せる。 */
+  readonly strokeWidth: number;
+  readonly strokeStyle: StrokeStyle;
+}
+
+/** 図形の枠線の既定。 */
+export const DEFAULT_STROKE: StrokeSettings = {
+  strokeWidth: 1,
+  strokeStyle: "solid",
+};
+
+/** コネクタの既定。図形の枠より少し太くして線として見えやすくする。 */
+export const DEFAULT_CONNECTOR_STROKE: StrokeSettings = {
+  strokeWidth: 2,
+  strokeStyle: "solid",
+};
+
+/** コネクタの端に付ける印。 */
+export const END_CAPS = ["none", "arrow", "circle"] as const;
+export type EndCap = (typeof END_CAPS)[number];
+
+/** 端の印の大きさ。 */
+export const CAP_SIZES = ["small", "medium", "large"] as const;
+export type CapSize = (typeof CAP_SIZES)[number];
+
+/** テキストの書体。 */
+export interface TextStyle {
+  readonly fontFamily: string;
+  readonly fontSize: number;
+}
+
 /** 既定のボード名。 */
 export const DEFAULT_BOARD_NAME = "無題のボード";
 
@@ -61,7 +101,10 @@ export const DEFAULT_TEXT_HEIGHT = 48;
 
 /** テキストの既定フォント。 */
 export const DEFAULT_FONT_FAMILY = "Hiragino Sans";
+/** 単体テキストの既定サイズ。 */
 export const DEFAULT_FONT_SIZE = 20;
+/** 付箋・図形に内包するテキストの既定サイズ。枠に収めたいので少し小さい。 */
+export const DEFAULT_ITEM_FONT_SIZE = 16;
 
 /** 画像を配置するときの既定の最大辺長。これを超える画像は縮小して配置する。 */
 export const DEFAULT_IMAGE_MAX_EDGE = 480;
@@ -77,25 +120,29 @@ export interface ItemBase {
 }
 
 /** 付箋。 */
-export interface StickyNoteItem extends ItemBase, TextAlignment {
+export interface StickyNoteItem extends ItemBase, TextAlignment, TextStyle {
   readonly type: "sticky";
   readonly text: string;
   readonly color: StickyColor;
 }
 
 /** 図形（矩形・円）。テキストを内包できる。 */
-export interface ShapeItem extends ItemBase, TextAlignment {
+export interface ShapeItem
+  extends ItemBase,
+    TextAlignment,
+    TextStyle,
+    StrokeSettings {
   readonly type: "shape";
   readonly shape: ShapeKind;
   readonly text: string;
+  /** 塗りの色。null なら塗らない（背景が透ける）。 */
+  readonly fill: string | null;
 }
 
 /** 単体のテキスト。 */
-export interface TextItem extends ItemBase, TextAlignment {
+export interface TextItem extends ItemBase, TextAlignment, TextStyle {
   readonly type: "text";
   readonly text: string;
-  readonly fontFamily: string;
-  readonly fontSize: number;
 }
 
 /** 画像。リサイズ時は常に縦横比を維持する（`naturalWidth` / `naturalHeight` が基準）。 */
@@ -114,15 +161,17 @@ export type Item = StickyNoteItem | ShapeItem | TextItem | ImageItem;
 export type ItemType = Item["type"];
 
 /** アイテム同士を結ぶコネクタ。 */
-export interface Connector {
+export interface Connector extends StrokeSettings {
   readonly id: ConnectorId;
   readonly kind: ConnectorKind;
   readonly fromItemId: ItemId;
   readonly toItemId: ItemId;
-  /** 始点に矢印を描くか。 */
-  readonly arrowStart: boolean;
-  /** 終点に矢印を描くか。 */
-  readonly arrowEnd: boolean;
+  /** 始点に付ける印。 */
+  readonly startCap: EndCap;
+  /** 終点に付ける印。 */
+  readonly endCap: EndCap;
+  /** 両端の印の大きさ。 */
+  readonly capSize: CapSize;
 }
 
 /** ホワイトボード 1 枚分の状態。 */
@@ -143,10 +192,12 @@ interface ItemBaseParams {
   readonly height?: number;
 }
 
-/** テキストの配置を指定する引数。 */
-interface TextAlignmentParams {
+/** テキストの配置と書体を指定する引数。 */
+interface TextStyleParams {
   readonly align?: TextAlign;
   readonly verticalAlign?: TextVerticalAlign;
+  readonly fontFamily?: string;
+  readonly fontSize?: number;
 }
 
 /**
@@ -154,24 +205,32 @@ interface TextAlignmentParams {
  * 付箋と図形は中央、単体テキストは左上を既定とし、
  * それぞれの見た目の慣習に合わせる。
  */
-function alignmentOf(
-  params: TextAlignmentParams,
-  fallback: TextAlignment,
-): TextAlignment {
+function textSettingsOf(
+  params: TextStyleParams,
+  fallback: TextAlignment & TextStyle,
+): TextAlignment & TextStyle {
   return {
     align: params.align ?? fallback.align,
     verticalAlign: params.verticalAlign ?? fallback.verticalAlign,
+    fontFamily: params.fontFamily ?? fallback.fontFamily,
+    fontSize: params.fontSize ?? fallback.fontSize,
   };
 }
 
-const BOXED_TEXT_ALIGNMENT: TextAlignment = {
+/** 付箋・図形の内部テキストの既定。 */
+export const BOXED_TEXT_DEFAULTS: TextAlignment & TextStyle = {
   align: "center",
   verticalAlign: "middle",
+  fontFamily: DEFAULT_FONT_FAMILY,
+  fontSize: DEFAULT_ITEM_FONT_SIZE,
 };
 
-const STANDALONE_TEXT_ALIGNMENT: TextAlignment = {
+/** 単体テキストの既定。 */
+export const STANDALONE_TEXT_DEFAULTS: TextAlignment & TextStyle = {
   align: "left",
   verticalAlign: "top",
+  fontFamily: DEFAULT_FONT_FAMILY,
+  fontSize: DEFAULT_FONT_SIZE,
 };
 
 export function createBoard(params: {
@@ -188,7 +247,7 @@ export function createBoard(params: {
 
 export function createStickyNote(
   params: ItemBaseParams &
-    TextAlignmentParams & {
+    TextStyleParams & {
       readonly text?: string;
       readonly color?: StickyColor;
     },
@@ -202,15 +261,20 @@ export function createStickyNote(
     height: params.height ?? DEFAULT_STICKY_SIZE,
     text: params.text ?? "",
     color: params.color ?? "yellow",
-    ...alignmentOf(params, BOXED_TEXT_ALIGNMENT),
+    ...textSettingsOf(params, BOXED_TEXT_DEFAULTS),
   };
 }
 
+/** 図形の既定の塗り色。 */
+export const DEFAULT_SHAPE_FILL = "#FFFFFF";
+
 export function createShape(
   params: ItemBaseParams &
-    TextAlignmentParams & {
+    TextStyleParams &
+    Partial<StrokeSettings> & {
       readonly shape: ShapeKind;
       readonly text?: string;
+      readonly fill?: string | null;
     },
 ): ShapeItem {
   return {
@@ -222,17 +286,15 @@ export function createShape(
     width: params.width ?? DEFAULT_SHAPE_SIZE,
     height: params.height ?? DEFAULT_SHAPE_SIZE,
     text: params.text ?? "",
-    ...alignmentOf(params, BOXED_TEXT_ALIGNMENT),
+    fill: params.fill === undefined ? DEFAULT_SHAPE_FILL : params.fill,
+    strokeWidth: params.strokeWidth ?? DEFAULT_STROKE.strokeWidth,
+    strokeStyle: params.strokeStyle ?? DEFAULT_STROKE.strokeStyle,
+    ...textSettingsOf(params, BOXED_TEXT_DEFAULTS),
   };
 }
 
 export function createText(
-  params: ItemBaseParams &
-    TextAlignmentParams & {
-      readonly text?: string;
-      readonly fontFamily?: string;
-      readonly fontSize?: number;
-    },
+  params: ItemBaseParams & TextStyleParams & { readonly text?: string },
 ): TextItem {
   return {
     id: params.id,
@@ -242,9 +304,7 @@ export function createText(
     width: params.width ?? DEFAULT_TEXT_WIDTH,
     height: params.height ?? DEFAULT_TEXT_HEIGHT,
     text: params.text ?? "",
-    fontFamily: params.fontFamily ?? DEFAULT_FONT_FAMILY,
-    fontSize: params.fontSize ?? DEFAULT_FONT_SIZE,
-    ...alignmentOf(params, STANDALONE_TEXT_ALIGNMENT),
+    ...textSettingsOf(params, STANDALONE_TEXT_DEFAULTS),
   };
 }
 
@@ -293,15 +353,21 @@ export function createConnector(params: {
   readonly fromItemId: ItemId;
   readonly toItemId: ItemId;
   readonly kind?: ConnectorKind;
-  readonly arrowStart?: boolean;
-  readonly arrowEnd?: boolean;
+  readonly startCap?: EndCap;
+  readonly endCap?: EndCap;
+  readonly capSize?: CapSize;
+  readonly strokeWidth?: number;
+  readonly strokeStyle?: StrokeStyle;
 }): Connector {
   return {
     id: params.id,
     kind: params.kind ?? "straight",
     fromItemId: params.fromItemId,
     toItemId: params.toItemId,
-    arrowStart: params.arrowStart ?? false,
-    arrowEnd: params.arrowEnd ?? false,
+    startCap: params.startCap ?? "none",
+    endCap: params.endCap ?? "none",
+    capSize: params.capSize ?? "medium",
+    strokeWidth: params.strokeWidth ?? DEFAULT_CONNECTOR_STROKE.strokeWidth,
+    strokeStyle: params.strokeStyle ?? DEFAULT_CONNECTOR_STROKE.strokeStyle,
   };
 }

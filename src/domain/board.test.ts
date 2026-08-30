@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
+  DEFAULT_ITEM_FONT_SIZE,
   DEFAULT_IMAGE_MAX_EDGE,
   DEFAULT_SHAPE_SIZE,
   DEFAULT_STICKY_SIZE,
@@ -53,6 +54,8 @@ describe("createStickyNote", () => {
       color: "yellow",
       align: "center",
       verticalAlign: "middle",
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontSize: DEFAULT_ITEM_FONT_SIZE,
     });
   });
 
@@ -88,6 +91,11 @@ describe("createShape", () => {
       text: "",
       align: "center",
       verticalAlign: "middle",
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontSize: DEFAULT_ITEM_FONT_SIZE,
+      fill: "#FFFFFF",
+      strokeWidth: 1,
+      strokeStyle: "solid",
     });
   });
 
@@ -223,8 +231,11 @@ describe("createConnector", () => {
         kind: "straight",
         fromItemId: "a",
         toItemId: "b",
-        arrowStart: false,
-        arrowEnd: false,
+        startCap: "none",
+        endCap: "none",
+        capSize: "medium",
+        strokeWidth: 2,
+        strokeStyle: "solid",
       },
     );
   });
@@ -240,23 +251,39 @@ describe("createConnector", () => {
     ).toBe("curved");
   });
 
-  it("両端の矢印を別々に指定できる", () => {
+  it("両端の印を別々に指定できる", () => {
     expect(
       createConnector({
         id: "c1",
         fromItemId: "a",
         toItemId: "b",
-        arrowStart: true,
+        startCap: "arrow",
+        endCap: "circle",
       }),
-    ).toMatchObject({ arrowStart: true, arrowEnd: false });
+    ).toMatchObject({ startCap: "arrow", endCap: "circle" });
+  });
+
+  it("印の大きさを指定できる", () => {
     expect(
       createConnector({
         id: "c1",
         fromItemId: "a",
         toItemId: "b",
-        arrowEnd: true,
+        capSize: "large",
+      }).capSize,
+    ).toBe("large");
+  });
+
+  it("線の太さと線種を指定できる", () => {
+    expect(
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        strokeWidth: 5,
+        strokeStyle: "dashed",
       }),
-    ).toMatchObject({ arrowStart: false, arrowEnd: true });
+    ).toMatchObject({ strokeWidth: 5, strokeStyle: "dashed" });
   });
 });
 
@@ -294,5 +321,81 @@ describe("テキストの配置", () => {
     expect(
       createText({ id: "t", x: 0, y: 0, align: "center" }),
     ).toMatchObject({ align: "center", verticalAlign: "top" });
+  });
+});
+
+describe("テキストの書体", () => {
+  it("付箋と図形は枠に収まる小さめのサイズを既定にする", () => {
+    expect(createStickyNote({ id: "s", x: 0, y: 0 })).toMatchObject({
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontSize: DEFAULT_ITEM_FONT_SIZE,
+    });
+    expect(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    ).toMatchObject({ fontSize: DEFAULT_ITEM_FONT_SIZE });
+  });
+
+  it("単体テキストは大きめのサイズを既定にする", () => {
+    expect(createText({ id: "t", x: 0, y: 0 })).toMatchObject({
+      fontSize: DEFAULT_FONT_SIZE,
+    });
+  });
+
+  it("付箋でもフォントを指定できる", () => {
+    expect(
+      createStickyNote({
+        id: "s",
+        x: 0,
+        y: 0,
+        fontFamily: "Menlo",
+        fontSize: 32,
+      }),
+    ).toMatchObject({ fontFamily: "Menlo", fontSize: 32 });
+  });
+
+  it("図形でもフォントを指定できる", () => {
+    expect(
+      createShape({
+        id: "r",
+        shape: "circle",
+        x: 0,
+        y: 0,
+        fontSize: 24,
+      }),
+    ).toMatchObject({ fontSize: 24 });
+  });
+});
+
+describe("図形の塗りと枠線", () => {
+  it("既定では白く塗り、細い実線で囲む", () => {
+    expect(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    ).toMatchObject({ fill: "#FFFFFF", strokeWidth: 1, strokeStyle: "solid" });
+  });
+
+  it("塗りの色を指定できる", () => {
+    expect(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0, fill: "#FF0000" })
+        .fill,
+    ).toBe("#FF0000");
+  });
+
+  it("塗らないことも指定できる", () => {
+    expect(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0, fill: null }).fill,
+    ).toBeNull();
+  });
+
+  it("枠線の太さと種類を指定できる", () => {
+    expect(
+      createShape({
+        id: "r",
+        shape: "rectangle",
+        x: 0,
+        y: 0,
+        strokeWidth: 5,
+        strokeStyle: "dotted",
+      }),
+    ).toMatchObject({ strokeWidth: 5, strokeStyle: "dotted" });
   });
 });

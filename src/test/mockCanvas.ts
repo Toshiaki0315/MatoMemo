@@ -53,6 +53,7 @@ const RECORDED_METHODS = [
   "fill",
   "stroke",
   "clip",
+  "setLineDash",
   "fillText",
   "strokeText",
   "drawImage",

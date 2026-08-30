@@ -4,28 +4,40 @@
 
 import {
   arrowHead,
+  CAP_LENGTHS,
   connectorEnds,
   type ConnectorPath,
 } from "../domain/connectorPath";
+import {
+  DEFAULT_CONNECTOR_STROKE,
+  type CapSize,
+  type EndCap,
+  type StrokeSettings,
+} from "../domain/board";
 import { CONNECTOR_HANDLE_SIZE } from "../domain/connectorHitTest";
+import { dashPattern } from "./strokePattern";
 import type { Point } from "../domain/geometry";
 import { SELECTION_COLOR } from "./palette";
 
 /** コネクタの線の色。 */
 export const CONNECTOR_COLOR = "#6B7385";
 
-/** コネクタの線の太さ (画面 px)。拡大率によらず一定に見せる。 */
-const CONNECTOR_LINE_WIDTH = 2;
+/** 端点ハンドルの線の太さ (画面 px)。 */
+const HANDLE_LINE_WIDTH = 2;
 
 /** 折れ線の角の丸み（ワールド座標）。 */
 const CORNER_RADIUS = 8;
 
 export interface DrawConnectorOptions {
   readonly selected?: boolean;
-  /** 始点に矢印を描くか。 */
-  readonly arrowStart?: boolean;
-  /** 終点に矢印を描くか。 */
-  readonly arrowEnd?: boolean;
+  /** 線の見た目。省略時は既定の太さ・実線。 */
+  readonly stroke?: StrokeSettings;
+  /** 始点に付ける印。 */
+  readonly startCap?: EndCap;
+  /** 終点に付ける印。 */
+  readonly endCap?: EndCap;
+  /** 印の大きさ。 */
+  readonly capSize?: CapSize;
 }
 
 /** コネクタ 1 本を描く。 */
@@ -35,10 +47,13 @@ export function drawConnector(
   scale: number,
   options: DrawConnectorOptions = {},
 ): void {
+  const stroke = options.stroke ?? DEFAULT_CONNECTOR_STROKE;
   ctx.strokeStyle = options.selected === true ? SELECTION_COLOR : CONNECTOR_COLOR;
-  ctx.lineWidth = CONNECTOR_LINE_WIDTH / scale;
+  // 太さと破線の間隔は画面上で一定に見せたいので拡大率で割る
+  ctx.lineWidth = stroke.strokeWidth / scale;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  ctx.setLineDash(dashPattern(stroke.strokeStyle, scale));
 
   ctx.beginPath();
   if (path.kind === "curve") {
@@ -55,31 +70,40 @@ export function drawConnector(
     tracePolyline(ctx, path.points);
   }
   ctx.stroke();
+  // 矢印や丸は破線にしないので、ここで戻しておく
+  ctx.setLineDash([]);
 
-  if (options.arrowStart === true) {
-    drawArrowHead(ctx, path, "from");
-  }
-  if (options.arrowEnd === true) {
-    drawArrowHead(ctx, path, "to");
-  }
+  const size = CAP_LENGTHS[options.capSize ?? "medium"] / scale;
+  drawCap(ctx, path, "from", options.startCap ?? "none", size);
+  drawCap(ctx, path, "to", options.endCap ?? "none", size);
 }
 
-/** 指定した端に矢羽根を描く。線と同じ色で塗りつぶす。 */
-function drawArrowHead(
+/** 指定した端に印を描く。線と同じ色で塗りつぶす。 */
+function drawCap(
   ctx: CanvasRenderingContext2D,
   path: ConnectorPath,
   end: "from" | "to",
+  cap: EndCap,
+  size: number,
 ): void {
-  const head = arrowHead(path, end);
+  if (cap === "none") {
+    return;
+  }
+  const head = arrowHead(path, end, size);
   if (head === null) {
     return;
   }
   ctx.fillStyle = ctx.strokeStyle;
   ctx.beginPath();
-  ctx.moveTo(head.tip.x, head.tip.y);
-  ctx.lineTo(head.left.x, head.left.y);
-  ctx.lineTo(head.right.x, head.right.y);
-  ctx.closePath();
+  if (cap === "circle") {
+    // 丸は線の端に中心を置き、矢印と同じ大きさの指定で釣り合うようにする
+    ctx.arc(head.tip.x, head.tip.y, size / 2, 0, Math.PI * 2);
+  } else {
+    ctx.moveTo(head.tip.x, head.tip.y);
+    ctx.lineTo(head.left.x, head.left.y);
+    ctx.lineTo(head.right.x, head.right.y);
+    ctx.closePath();
+  }
   ctx.fill();
 }
 
@@ -132,7 +156,7 @@ export function drawConnectorHandles(
 
   ctx.fillStyle = "#FFFFFF";
   ctx.strokeStyle = SELECTION_COLOR;
-  ctx.lineWidth = CONNECTOR_LINE_WIDTH / scale;
+  ctx.lineWidth = HANDLE_LINE_WIDTH / scale;
 
   for (const { point } of connectorEnds(path)) {
     ctx.beginPath();

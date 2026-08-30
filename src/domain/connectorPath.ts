@@ -6,7 +6,7 @@
  * 「常に今の位置から計算する」ことで、追従の実装そのものが不要になる。
  */
 
-import type { ConnectorKind, Item } from "./board";
+import type { CapSize, ConnectorKind, Item } from "./board";
 import { rectCenter, type Point, type Rect } from "./geometry";
 
 /** アイテムの輪郭の種類。円だけが楕円、それ以外は矩形として扱う。 */
@@ -214,8 +214,12 @@ function arrowBasis(
     : { tip: path.points[0], previous: path.points[1] };
 }
 
-/** 矢羽根の長さ（ワールド座標）。 */
-export const ARROW_LENGTH = 12;
+/** 端の印の大きさ（画面 px）。 */
+export const CAP_LENGTHS: Record<CapSize, number> = {
+  small: 8,
+  medium: 12,
+  large: 18,
+};
 
 /** 矢羽根の開き角（ラジアン）。 */
 const ARROW_SPREAD = Math.PI / 7;
@@ -236,6 +240,7 @@ export interface ArrowHead {
 export function arrowHead(
   path: ConnectorPath,
   end: "from" | "to" = "to",
+  length: number = CAP_LENGTHS.medium,
 ): ArrowHead | null {
   const { tip, previous } = arrowBasis(path, end);
 
@@ -252,12 +257,12 @@ export function arrowHead(
   return {
     tip,
     left: {
-      x: tip.x - ARROW_LENGTH * Math.cos(angle - ARROW_SPREAD),
-      y: tip.y - ARROW_LENGTH * Math.sin(angle - ARROW_SPREAD),
+      x: tip.x - length * Math.cos(angle - ARROW_SPREAD),
+      y: tip.y - length * Math.sin(angle - ARROW_SPREAD),
     },
     right: {
-      x: tip.x - ARROW_LENGTH * Math.cos(angle + ARROW_SPREAD),
-      y: tip.y - ARROW_LENGTH * Math.sin(angle + ARROW_SPREAD),
+      x: tip.x - length * Math.cos(angle + ARROW_SPREAD),
+      y: tip.y - length * Math.sin(angle + ARROW_SPREAD),
     },
   };
 }

@@ -10,6 +10,7 @@ import type {
   ImageItem,
   TextAlign,
   TextAlignment,
+  TextStyle,
   TextVerticalAlign,
 } from "../domain/board";
 import type { Rect } from "../domain/geometry";
@@ -24,6 +25,7 @@ import {
   SHAPE_COLORS,
   STICKY_PALETTE,
 } from "./palette";
+import { dashPattern } from "./strokePattern";
 import { wrapText } from "./textLayout";
 
 /** 読み込み済み画像の参照表。id から描画可能な画像を引く。 */
@@ -31,6 +33,8 @@ export type ImageCache = ReadonlyMap<string, CanvasImageSource>;
 
 export interface DrawItemOptions {
   readonly images?: ImageCache;
+  /** 表示倍率。線の太さや破線の間隔を画面基準に保つために使う。 */
+  readonly scale?: number;
   /**
    * テキストを描かない。編集中のアイテムに指定する。
    * 編集用の `<textarea>` を重ねている間に Canvas 側も描くと、
@@ -48,10 +52,6 @@ const TEXT_PADDING = 12;
 /** 行送り（フォントサイズに対する倍率）。 */
 const LINE_HEIGHT_RATIO = 1.4;
 
-/** 付箋・図形の内部テキストの既定サイズ。 */
-const ITEM_FONT_SIZE = 16;
-const ITEM_FONT_FAMILY = "Hiragino Sans";
-
 /** 選択枠の見た目の太さ (px)。拡大率によらず一定に見せる。 */
 const SELECTION_LINE_WIDTH = 2;
 
@@ -62,12 +62,13 @@ export function drawItem(
   options: DrawItemOptions = {},
 ): void {
   const hideText = options.hideText ?? false;
+  const scale = options.scale ?? 1;
   switch (item.type) {
     case "sticky":
       drawSticky(ctx, item, hideText);
       return;
     case "shape":
-      drawShape(ctx, item, hideText);
+      drawShape(ctx, item, hideText, scale);
       return;
     case "text":
       drawText(ctx, item, hideText);
@@ -101,6 +102,7 @@ function drawShape(
   ctx: CanvasRenderingContext2D,
   item: ShapeItem,
   hideText: boolean,
+  scale: number,
 ): void {
   ctx.beginPath();
   if (item.shape === "circle") {
@@ -108,11 +110,16 @@ function drawShape(
   } else {
     ctx.rect(item.x, item.y, item.width, item.height);
   }
-  ctx.fillStyle = SHAPE_COLORS.fill;
-  ctx.fill();
+  if (item.fill !== null) {
+    ctx.fillStyle = item.fill;
+    ctx.fill();
+  }
   ctx.strokeStyle = SHAPE_COLORS.border;
-  ctx.lineWidth = 1;
+  // 線の太さと間隔は画面上で一定に見せたいので拡大率で割る
+  ctx.lineWidth = item.strokeWidth / scale;
+  ctx.setLineDash(dashPattern(item.strokeStyle, scale));
   ctx.stroke();
+  ctx.setLineDash([]);
 
   if (!hideText) {
     drawBoxedText(ctx, item.text, item);
@@ -204,17 +211,17 @@ function drawImage(
 function drawBoxedText(
   ctx: CanvasRenderingContext2D,
   text: string,
-  item: Rect & TextAlignment,
+  item: Rect & TextAlignment & TextStyle,
 ): void {
   if (text === "") {
     return;
   }
-  ctx.font = `${ITEM_FONT_SIZE}px "${ITEM_FONT_FAMILY}", sans-serif`;
+  ctx.font = `${item.fontSize}px "${item.fontFamily}", sans-serif`;
   ctx.fillStyle = ITEM_TEXT_COLOR;
   ctx.textAlign = item.align;
   ctx.textBaseline = "top";
 
-  const lineHeight = ITEM_FONT_SIZE * LINE_HEIGHT_RATIO;
+  const lineHeight = item.fontSize * LINE_HEIGHT_RATIO;
   const maxLines = Math.max(
     1,
     Math.floor((item.height - TEXT_PADDING * 2) / lineHeight),

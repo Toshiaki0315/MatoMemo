@@ -39,5 +39,20 @@ export const SHAPE_COLORS: ItemColors = {
 /** 選択中のアイテムを囲む枠の色。 */
 export const SELECTION_COLOR = "#3B82F6";
 
+/**
+ * 図形の塗りに選べる色。
+ * 付箋と同じパステル系に白とグレーを足し、線や文字と喧嘩しない範囲に絞る。
+ */
+export const FILL_COLORS: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "#FFFFFF", label: "白" },
+  { value: "#F0F1F3", label: "グレー" },
+  { value: STICKY_PALETTE.yellow.fill, label: "黄色" },
+  { value: STICKY_PALETTE.orange.fill, label: "オレンジ" },
+  { value: STICKY_PALETTE.pink.fill, label: "ピンク" },
+  { value: STICKY_PALETTE.purple.fill, label: "紫" },
+  { value: STICKY_PALETTE.blue.fill, label: "青" },
+  { value: STICKY_PALETTE.green.fill, label: "緑" },
+];
+
 /** 範囲ドラッグ中の選択範囲の塗り。下のアイテムが透けるよう薄くする。 */
 export const SELECTION_RECT_FILL = "rgba(59, 130, 246, 0.12)";

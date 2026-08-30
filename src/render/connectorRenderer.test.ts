@@ -120,7 +120,7 @@ describe("drawConnector: 矢印", () => {
 
   it("指定すると終点に三角形を描く", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, straight, 1, { arrowEnd: true });
+    drawConnector(mock.ctx, straight, 1, { endCap: "arrow" });
     expect(mock.callsOf("closePath")).toHaveLength(1);
     expect(mock.callsOf("fill")).toHaveLength(1);
     // 三角形なので moveTo 1 回と lineTo 2 回が加わる
@@ -129,20 +129,20 @@ describe("drawConnector: 矢印", () => {
 
   it("矢印は線と同じ色で塗る", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, straight, 1, { arrowEnd: true, selected: true });
+    drawConnector(mock.ctx, straight, 1, { endCap: "arrow", selected: true });
     expect(mock.ctx.fillStyle).toBe(SELECTION_COLOR);
   });
 
   it("曲線にも矢印を描ける", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, curve, 1, { arrowEnd: true });
+    drawConnector(mock.ctx, curve, 1, { endCap: "arrow" });
     expect(mock.callsOf("closePath")).toHaveLength(1);
   });
 
   it("向きが決まらない経路では矢印を描かない", () => {
     const mock = createMockContext();
     drawConnector(mock.ctx, { kind: "polyline", points: [] }, 1, {
-      arrowEnd: true,
+      endCap: "arrow",
     });
     expect(mock.callsOf("closePath")).toHaveLength(0);
   });
@@ -175,7 +175,7 @@ describe("drawConnectorHandles", () => {
 describe("drawConnector: 両端の矢印", () => {
   it("始点だけに矢印を描ける", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, straight, 1, { arrowStart: true });
+    drawConnector(mock.ctx, straight, 1, { startCap: "arrow" });
     expect(mock.callsOf("closePath")).toHaveLength(1);
     // 始点 (0,0) を頂点にする
     expect(mock.callsOf("moveTo").at(-1)?.args).toEqual([0, 0]);
@@ -183,13 +183,13 @@ describe("drawConnector: 両端の矢印", () => {
 
   it("両端に矢印を描ける", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, straight, 1, { arrowStart: true, arrowEnd: true });
+    drawConnector(mock.ctx, straight, 1, { startCap: "arrow", endCap: "arrow" });
     expect(mock.callsOf("closePath")).toHaveLength(2);
   });
 
   it("始点の矢印は線が入ってくる向きに合わせる", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, straight, 1, { arrowStart: true });
+    drawConnector(mock.ctx, straight, 1, { startCap: "arrow" });
     // 左向きの矢印なので、矢羽根は始点より右へ開く
     const lineTo = mock.callsOf("lineTo").slice(-2);
     for (const call of lineTo) {
@@ -199,7 +199,7 @@ describe("drawConnector: 両端の矢印", () => {
 
   it("曲線でも始点に矢印を描ける", () => {
     const mock = createMockContext();
-    drawConnector(mock.ctx, curve, 1, { arrowStart: true });
+    drawConnector(mock.ctx, curve, 1, { startCap: "arrow" });
     expect(mock.callsOf("closePath")).toHaveLength(1);
   });
 });

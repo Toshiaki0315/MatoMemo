@@ -189,6 +189,7 @@ body,
 
 .text-properties {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 12px;
   border: 1px solid var(--toolbar-border);
@@ -463,8 +464,10 @@ body,
   cursor: pointer;
 }
 
+.shape-properties,
 .connector-properties {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
@@ -477,6 +480,7 @@ body,
   font-size: 12px;
 }
 
+.shape-properties label,
 .connector-properties label {
   display: flex;
   align-items: center;
@@ -484,6 +488,7 @@ body,
   white-space: nowrap;
 }
 
+.shape-properties select,
 .connector-properties select {
   padding: 3px 6px;
   border: 1px solid var(--toolbar-border);

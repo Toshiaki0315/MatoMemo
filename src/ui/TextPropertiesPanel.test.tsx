@@ -110,12 +110,22 @@ describe("TextPropertiesPanel: テキストの配置", () => {
     expect(verticalSelect.value).toBe("middle");
   });
 
-  it("付箋にはフォントの設定を出さない", () => {
+  it("付箋にもフォントの設定を出す", () => {
     const { fontSelect, sizeSelect } = renderPanel(
       createStickyNote({ id: "s", x: 0, y: 0 }),
     );
-    expect(fontSelect).toBeNull();
-    expect(sizeSelect).toBeNull();
+    expect(fontSelect).toBeInTheDocument();
+    expect(sizeSelect.value).toBe("16");
+  });
+
+  it("付箋のフォントを変えると更新後のアイテムを通知する", () => {
+    const { sizeSelect, onChange } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0 }),
+    );
+    fireEvent.change(sizeSelect, { target: { value: "24" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "sticky", fontSize: 24 }),
+    );
   });
 
   it("図形にも配置の設定を出す", () => {

@@ -21,9 +21,6 @@ const VERTICAL_ALIGN_TO_FLEX: Record<string, string> = {
   bottom: "flex-end",
 };
 
-/** 付箋・図形の内部テキストのフォント（描画側と揃える）。 */
-const ITEM_FONT_SIZE = 16;
-const ITEM_FONT_FAMILY = "Hiragino Sans";
 const LINE_HEIGHT_RATIO = 1.4;
 const TEXT_PADDING = 12;
 
@@ -44,8 +41,7 @@ export function ItemTextEditor({
 
   const isStandaloneText = item.type === "text";
   const topLeft = toScreen(viewport, { x: item.x, y: item.y });
-  const fontSize = isStandaloneText ? item.fontSize : ITEM_FONT_SIZE;
-  const fontFamily = isStandaloneText ? item.fontFamily : ITEM_FONT_FAMILY;
+  const { fontSize, fontFamily } = item;
 
   /**
    * 開いた直後に入力できるようフォーカスし、カーソルを末尾に置く。

@@ -464,49 +464,195 @@ describe("parseBoardFile: コネクタの検証", () => {
   });
 });
 
-describe("parseBoardFile: 矢印の項目", () => {
+describe("parseBoardFile: 端の印", () => {
   /** connectors[0] のフィールドを差し替えた JSON を作る。 */
   function withFields(fields: Record<string, unknown>): string {
     return boardJson((b) => {
       const connectors = b["connectors"] as Record<string, unknown>[];
-      const { arrowStart: _s, arrowEnd: _e, ...rest } = connectors[0] as Record<
-        string,
-        unknown
-      >;
+      const {
+        startCap: _s,
+        endCap: _e,
+        capSize: _c,
+        ...rest
+      } = connectors[0] as Record<string, unknown>;
       b["connectors"] = [{ ...rest, ...fields }];
     });
   }
 
-  it("両端の矢印を復元する", () => {
+  it("両端の印と大きさを復元する", () => {
+    expect(
+      parseBoardFile(
+        withFields({ startCap: "arrow", endCap: "circle", capSize: "large" }),
+      ).connectors[0],
+    ).toMatchObject({
+      startCap: "arrow",
+      endCap: "circle",
+      capSize: "large",
+    });
+  });
+
+  it("項目が無い古いファイルは印なし・中くらいとして読む", () => {
+    expect(parseBoardFile(withFields({})).connectors[0]).toMatchObject({
+      startCap: "none",
+      endCap: "none",
+      capSize: "medium",
+    });
+  });
+
+  it("以前の arrowStart / arrowEnd を矢印として読む", () => {
     expect(
       parseBoardFile(withFields({ arrowStart: true, arrowEnd: false }))
         .connectors[0],
-    ).toMatchObject({ arrowStart: true, arrowEnd: false });
+    ).toMatchObject({ startCap: "arrow", endCap: "none" });
   });
 
-  it("項目が無い古いファイルは矢印なしとして読む", () => {
-    expect(parseBoardFile(withFields({})).connectors[0]).toMatchObject({
-      arrowStart: false,
-      arrowEnd: false,
-    });
+  it("さらに古い arrow は終点の矢印として読む", () => {
+    expect(parseBoardFile(withFields({ arrow: true })).connectors[0]).toMatchObject(
+      { startCap: "none", endCap: "arrow" },
+    );
   });
 
-  it("以前の arrow は終点の矢印として読む", () => {
-    expect(parseBoardFile(withFields({ arrow: true })).connectors[0]).toMatchObject({
-      arrowStart: false,
-      arrowEnd: true,
-    });
-  });
-
-  it("arrowEnd があれば古い arrow より優先する", () => {
+  it("arrowEnd があれば arrow より優先する", () => {
     expect(
       parseBoardFile(withFields({ arrow: true, arrowEnd: false })).connectors[0],
-    ).toMatchObject({ arrowEnd: false });
+    ).toMatchObject({ endCap: "none" });
   });
 
-  it("真偽値でない場合はエラーにする", () => {
+  it("現行の項目があれば古い項目より優先する", () => {
+    expect(
+      parseBoardFile(withFields({ endCap: "circle", arrowEnd: true }))
+        .connectors[0],
+    ).toMatchObject({ endCap: "circle" });
+  });
+
+  it("未知の印はエラーにする", () => {
+    expect(catchError(withFields({ startCap: "square" })).issues).toContain(
+      'board.connectors[0].startCap が未知の値です: "square"',
+    );
+  });
+
+  it("未知の大きさはエラーにする", () => {
+    expect(catchError(withFields({ capSize: "huge" })).issues).toContain(
+      'board.connectors[0].capSize が未知の値です: "huge"',
+    );
+  });
+
+  it("古い項目が真偽値でない場合はエラーにする", () => {
     expect(catchError(withFields({ arrowStart: "yes" })).issues).toContain(
       "board.connectors[0].arrowStart は真偽値である必要があります",
+    );
+  });
+});
+
+describe("parseBoardFile: 線の見た目", () => {
+  /** items[0]（付箋）を図形に差し替えた JSON を作る。 */
+  function withShape(fields: Record<string, unknown>): string {
+    return boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      b["items"] = [{ ...items[1], ...fields }];
+      b["connectors"] = [];
+    });
+  }
+
+  /** connectors[0] のフィールドを差し替えた JSON を作る。 */
+  function withConnector(fields: Record<string, unknown>): string {
+    return boardJson((b) => {
+      const connectors = b["connectors"] as Record<string, unknown>[];
+      const {
+        strokeWidth: _w,
+        strokeStyle: _s,
+        ...rest
+      } = connectors[0] as Record<string, unknown>;
+      b["connectors"] = [{ ...rest, ...fields }];
+    });
+  }
+
+  it("図形の太さと線種を復元する", () => {
+    expect(
+      parseBoardFile(withShape({ strokeWidth: 5, strokeStyle: "dashed" }))
+        .items[0],
+    ).toMatchObject({ strokeWidth: 5, strokeStyle: "dashed" });
+  });
+
+  it("項目が無い古いファイルは細い実線として読む", () => {
+    const json = boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      const {
+        strokeWidth: _w,
+        strokeStyle: _s,
+        fill: _f,
+        ...rest
+      } = items[1] as Record<string, unknown>;
+      b["items"] = [rest];
+      b["connectors"] = [];
+    });
+    expect(parseBoardFile(json).items[0]).toMatchObject({
+      strokeWidth: 1,
+      strokeStyle: "solid",
+    });
+  });
+
+  it("コネクタの太さと線種を復元する", () => {
+    expect(
+      parseBoardFile(withConnector({ strokeWidth: 3, strokeStyle: "dotted" }))
+        .connectors[0],
+    ).toMatchObject({ strokeWidth: 3, strokeStyle: "dotted" });
+  });
+
+  it("項目が無い古いコネクタは既定の太さで読む", () => {
+    expect(parseBoardFile(withConnector({})).connectors[0]).toMatchObject({
+      strokeWidth: 2,
+      strokeStyle: "solid",
+    });
+  });
+
+  it("未知の線種はエラーにする", () => {
+    expect(catchError(withShape({ strokeStyle: "wavy" })).issues).toContain(
+      'board.items[0].strokeStyle が未知の値です: "wavy"',
+    );
+  });
+
+  it("太さが 1 未満ならエラーにする", () => {
+    expect(catchError(withShape({ strokeWidth: 0 })).issues).toContain(
+      "board.items[0].strokeWidth は 1 以上である必要があります",
+    );
+  });
+});
+
+describe("parseBoardFile: 図形の塗り", () => {
+  function withShape(fields: Record<string, unknown>): string {
+    return boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      b["items"] = [{ ...items[1], ...fields }];
+      b["connectors"] = [];
+    });
+  }
+
+  it("塗りの色を復元する", () => {
+    expect(parseBoardFile(withShape({ fill: "#FF0000" })).items[0]).toMatchObject(
+      { fill: "#FF0000" },
+    );
+  });
+
+  it("null は塗らないとして読む", () => {
+    expect(parseBoardFile(withShape({ fill: null })).items[0]).toMatchObject({
+      fill: null,
+    });
+  });
+
+  it("項目が無い古いファイルは白で塗る", () => {
+    const json = boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      const { fill: _f, ...rest } = items[1] as Record<string, unknown>;
+      b["items"] = [rest];
+      b["connectors"] = [];
+    });
+    expect(parseBoardFile(json).items[0]).toMatchObject({ fill: "#FFFFFF" });
+  });
+
+  it("色でも null でもなければエラーにする", () => {
+    expect(catchError(withShape({ fill: 123 })).issues).toContain(
+      "board.items[0].fill は色の文字列か null である必要があります",
     );
   });
 });

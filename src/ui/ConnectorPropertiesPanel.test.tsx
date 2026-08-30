@@ -17,8 +17,11 @@ function renderPanel(
   );
   return {
     kindSelect: screen.getByLabelText("種類") as HTMLSelectElement,
-    startArrow: screen.getByRole("checkbox", { name: "始点の矢印" }),
-    endArrow: screen.getByRole("checkbox", { name: "終点の矢印" }),
+    startCap: screen.getByLabelText("始点") as HTMLSelectElement,
+    endCap: screen.getByLabelText("終点") as HTMLSelectElement,
+    capSize: screen.getByLabelText("端の大きさ") as HTMLSelectElement,
+    widthSelect: screen.getByLabelText("太さ") as HTMLSelectElement,
+    styleSelect: screen.getByLabelText("線種") as HTMLSelectElement,
     onChange,
     onDelete,
   };
@@ -37,38 +40,64 @@ describe("ConnectorPropertiesPanel", () => {
     );
   });
 
-  it("矢印なしの状態を反映する", () => {
-    const { startArrow, endArrow } = renderPanel();
-    expect(startArrow).not.toBeChecked();
-    expect(endArrow).not.toBeChecked();
+  it("端に何も付いていない状態を反映する", () => {
+    const { startCap, endCap } = renderPanel();
+    expect(startCap.value).toBe("none");
+    expect(endCap.value).toBe("none");
   });
 
-  it("両端の矢印の状態を別々に反映する", () => {
-    const { startArrow, endArrow } = renderPanel(
+  it("両端の印を別々に反映する", () => {
+    const { startCap, endCap } = renderPanel(
       createConnector({
         id: "c1",
         fromItemId: "a",
         toItemId: "b",
-        arrowStart: true,
+        startCap: "arrow",
+        endCap: "circle",
       }),
     );
-    expect(startArrow).toBeChecked();
-    expect(endArrow).not.toBeChecked();
+    expect(startCap.value).toBe("arrow");
+    expect(endCap.value).toBe("circle");
   });
 
-  it("始点の矢印を切り替えると通知する", () => {
-    const { startArrow, onChange } = renderPanel();
-    fireEvent.click(startArrow);
+  it("始点の印を変えると通知する", () => {
+    const { startCap, onChange } = renderPanel();
+    fireEvent.change(startCap, { target: { value: "circle" } });
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ arrowStart: true, arrowEnd: false }),
+      expect.objectContaining({ startCap: "circle", endCap: "none" }),
     );
   });
 
-  it("終点の矢印を切り替えると通知する", () => {
-    const { endArrow, onChange } = renderPanel();
-    fireEvent.click(endArrow);
+  it("終点の印を変えると通知する", () => {
+    const { endCap, onChange } = renderPanel();
+    fireEvent.change(endCap, { target: { value: "arrow" } });
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ arrowStart: false, arrowEnd: true }),
+      expect.objectContaining({ endCap: "arrow" }),
+    );
+  });
+
+  it("端の大きさを変えると通知する", () => {
+    const { capSize, onChange } = renderPanel();
+    expect(capSize.value).toBe("medium");
+    fireEvent.change(capSize, { target: { value: "large" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ capSize: "large" }),
+    );
+  });
+
+  it("線の太さを変えると通知する", () => {
+    const { widthSelect, onChange } = renderPanel();
+    fireEvent.change(widthSelect, { target: { value: "5" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ strokeWidth: 5 }),
+    );
+  });
+
+  it("線種を変えると通知する", () => {
+    const { styleSelect, onChange } = renderPanel();
+    fireEvent.change(styleSelect, { target: { value: "dashed" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ strokeStyle: "dashed" }),
     );
   });
 
