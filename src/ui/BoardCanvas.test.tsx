@@ -54,12 +54,15 @@ function renderCanvas(options: RenderOptions = {}) {
   const handlers = {
     onViewportChange: vi.fn(),
     onSelect: vi.fn(),
+    onSelectMany: vi.fn(),
     onMoveSelected: vi.fn(),
     onResizeItem: vi.fn(),
     onDeleteSelected: vi.fn(),
     onContextMenu: vi.fn(),
     onActivateItem: vi.fn(),
     onPickForConnection: vi.fn(),
+    onBeginInteraction: vi.fn(),
+    onEndInteraction: vi.fn(),
   };
   const view = render(
     <BoardCanvas
@@ -75,6 +78,15 @@ function renderCanvas(options: RenderOptions = {}) {
   );
   const canvas = screen.getByTestId("board-canvas") as HTMLCanvasElement;
   return { canvas, view, ...handlers };
+}
+
+/** Space を押した状態にする（この間のドラッグはパンになる）。 */
+function holdSpace() {
+  fireEvent.keyDown(window, { code: "Space" });
+}
+
+function releaseSpace() {
+  fireEvent.keyUp(window, { code: "Space" });
 }
 
 /** onViewportChange に最後に渡されたビューポート。 */
@@ -122,6 +134,7 @@ describe("BoardCanvas: 描画", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -150,6 +163,7 @@ describe("BoardCanvas: 描画", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -227,8 +241,11 @@ describe("BoardCanvas: ホイールによるズーム", () => {
 });
 
 describe("BoardCanvas: ドラッグによるパン", () => {
-  it("ドラッグした分だけパンする", () => {
+  afterEach(() => releaseSpace());
+
+  it("Space を押しながらドラッグした分だけパンする", () => {
     const { canvas, onViewportChange } = renderCanvas();
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(window, { clientX: 130, clientY: 80 });
     expect(lastViewport(onViewportChange)).toEqual({ x: 30, y: -20, scale: 1 });
@@ -236,6 +253,7 @@ describe("BoardCanvas: ドラッグによるパン", () => {
 
   it("複数回の移動を累積する", () => {
     const { canvas, onViewportChange } = renderCanvas();
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 10, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 25, clientY: 0 });
@@ -249,6 +267,7 @@ describe("BoardCanvas: ドラッグによるパン", () => {
 
   it("ポインタを離すとパンが終わる", () => {
     const { canvas, onViewportChange } = renderCanvas();
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.pointerUp(window);
     onViewportChange.mockClear();
@@ -258,6 +277,7 @@ describe("BoardCanvas: ドラッグによるパン", () => {
 
   it("主ボタン以外のドラッグではパンしない", () => {
     const { canvas, onViewportChange } = renderCanvas();
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 2, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 50, clientY: 50 });
     expect(onViewportChange).not.toHaveBeenCalled();
@@ -278,6 +298,7 @@ describe("BoardCanvas: ドラッグによるパン", () => {
   it("パン中はカーソルを grabbing にする", () => {
     const { canvas } = renderCanvas();
     expect(canvas.style.cursor).toBe("grab");
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
     expect(canvas.style.cursor).toBe("grabbing");
     fireEvent.pointerUp(window);
@@ -384,14 +405,14 @@ describe("BoardCanvas: アイテムのドラッグ移動", () => {
     expect(onMoveSelected).toHaveBeenCalledWith(10, 0);
   });
 
-  it("空白部分のドラッグはパンになる", () => {
+  it("空白部分のドラッグはアイテムを動かさない（範囲選択になる）", () => {
     const { canvas, onMoveSelected, onViewportChange } = renderCanvas({
       board: boardWithSticky(),
     });
     fireEvent.pointerDown(canvas, { button: 0, clientX: 500, clientY: 500 });
     fireEvent.pointerMove(window, { clientX: 520, clientY: 500 });
-    expect(onViewportChange).toHaveBeenCalled();
     expect(onMoveSelected).not.toHaveBeenCalled();
+    expect(onViewportChange).not.toHaveBeenCalled();
   });
 
   it("ポインタを離すと移動が終わる", () => {
@@ -474,6 +495,7 @@ describe("BoardCanvas: ダブルクリック", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -511,6 +533,7 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
               selectedIds: new Set(id === null ? [] : [id]),
             }))
           }
+          onSelectMany={vi.fn()}
           onMoveSelected={(dx, dy) =>
             setState((prev) => ({
               ...prev,
@@ -546,6 +569,7 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
           selectedIds={new Set()}
           onViewportChange={setViewport}
           onSelect={vi.fn()}
+          onSelectMany={vi.fn()}
           onMoveSelected={vi.fn()}
           onResizeItem={vi.fn()}
           onDeleteSelected={vi.fn()}
@@ -555,9 +579,11 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
     render(<Harness />);
     const canvas = screen.getByTestId("board-canvas");
 
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 20, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 40, clientY: 0 });
+    releaseSpace();
 
     expect(latestX).toBe(40);
   });
@@ -576,6 +602,7 @@ describe("BoardCanvas: 編集中のアイテム", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -698,6 +725,7 @@ describe("BoardCanvas: カーソル", () => {
       board: boardWithSticky(),
       selectedIds: new Set(["s1"]),
     });
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 500, clientY: 500 });
     fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
     expect(canvas.style.cursor).toBe("grabbing");
@@ -742,6 +770,7 @@ describe("BoardCanvas: 右クリック", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -821,6 +850,7 @@ describe("BoardCanvas: 接続モード", () => {
       board: boardWithConnector(),
       connectMode: true,
     });
+    holdSpace();
     fireEvent.pointerDown(canvas, { button: 0, clientX: 700, clientY: 700 });
     fireEvent.pointerMove(window, { clientX: 720, clientY: 700 });
     expect(onPickForConnection).not.toHaveBeenCalled();
@@ -853,6 +883,7 @@ describe("BoardCanvas: 接続モード", () => {
         selectedIds={new Set()}
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
         onMoveSelected={vi.fn()}
         onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
@@ -896,5 +927,177 @@ describe("BoardCanvas: コネクタの右クリック", () => {
     });
     fireEvent.contextMenu(canvas, { clientX: 200, clientY: 400 });
     expect(onContextMenu).toHaveBeenCalledWith(null, { x: 200, y: 400 });
+  });
+});
+
+/** 100x100 の付箋を離れた位置に 2 枚持つボード。 */
+function boardWithTwoStickies() {
+  let board = createBoard({ id: "b1" });
+  board = addItem(
+    board,
+    createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+  );
+  return addItem(
+    board,
+    createStickyNote({ id: "b", x: 200, y: 0, width: 100, height: 100 }),
+  );
+}
+
+describe("BoardCanvas: 範囲ドラッグによる選択", () => {
+  it("囲んだアイテムをまとめて選択する", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenLastCalledWith(["a", "b"], false);
+  });
+
+  it("完全に含まれるアイテムだけを選ぶ", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: -10, clientY: -10 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(onSelectMany).toHaveBeenLastCalledWith(["a"], false);
+  });
+
+  it("どの向きにドラッグしても同じ範囲になる", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 150, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenLastCalledWith(["a"], false);
+  });
+
+  it("ドラッグ開始時に選択を解除する", () => {
+    const { canvas, onSelect } = renderCanvas({
+      board: boardWithTwoStickies(),
+      selectedIds: new Set(["b"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    expect(onSelect).toHaveBeenCalledWith(null, false);
+  });
+
+  it("Shift を押しながらなら既存の選択に足す", () => {
+    const { canvas, onSelect, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+      selectedIds: new Set(["b"]),
+    });
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      shiftKey: true,
+      clientX: -10,
+      clientY: -10,
+    });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelectMany).toHaveBeenLastCalledWith(["b", "a"], false);
+  });
+
+  it("ビューポートの拡大を考慮する", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+      viewport: { x: 0, y: 0, scale: 2 },
+    });
+    // 2 倍表示では 1 枚目は画面上 0〜200px を占める
+    fireEvent.pointerDown(canvas, { button: 0, clientX: -10, clientY: -10 });
+    fireEvent.pointerMove(window, { clientX: 210, clientY: 210 });
+    expect(onSelectMany).toHaveBeenLastCalledWith(["a"], false);
+  });
+
+  it("選択範囲を描く", () => {
+    const { canvas } = renderCanvas({ board: boardWithTwoStickies() });
+    canvasStub.mock.calls.length = 0;
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 400, clientY: 380 });
+    expect(
+      canvasStub.mock.callsOf("rect").map((call) => call.args),
+    ).toContainEqual([300, 300, 100, 80]);
+  });
+
+  it("離すと選択範囲の表示が消える", () => {
+    const { canvas } = renderCanvas({ board: boardWithTwoStickies() });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 400, clientY: 380 });
+    canvasStub.mock.calls.length = 0;
+    fireEvent.pointerUp(window);
+    expect(
+      canvasStub.mock.callsOf("rect").map((call) => call.args),
+    ).not.toContainEqual([300, 300, 100, 80]);
+  });
+
+  it("範囲選択は履歴のまとめを開始しない", () => {
+    const { canvas, onBeginInteraction, onEndInteraction } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    fireEvent.pointerUp(window);
+    expect(onBeginInteraction).not.toHaveBeenCalled();
+    expect(onEndInteraction).not.toHaveBeenCalled();
+  });
+
+  it("接続モードでは範囲選択にならない", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+      connectMode: true,
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("BoardCanvas: Space によるパンの切り替え", () => {
+  afterEach(() => releaseSpace());
+
+  it("Space を離すと範囲選択に戻る", () => {
+    const { canvas, onSelectMany, onViewportChange } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    holdSpace();
+    releaseSpace();
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenCalled();
+    expect(onViewportChange).not.toHaveBeenCalled();
+  });
+
+  it("ウィンドウがフォーカスを失うと Space の状態を解除する", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    holdSpace();
+    fireEvent.blur(window);
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenCalled();
+  });
+
+  it("テキスト入力中の Space はパンに使わない", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    fireEvent.keyDown(input, { code: "Space" });
+
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("Space 以外のキーでは切り替わらない", () => {
+    const { canvas, onSelectMany } = renderCanvas({
+      board: boardWithTwoStickies(),
+    });
+    fireEvent.keyDown(window, { code: "KeyA" });
+    fireEvent.keyUp(window, { code: "KeyA" });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
+    fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
+    expect(onSelectMany).toHaveBeenCalled();
   });
 });

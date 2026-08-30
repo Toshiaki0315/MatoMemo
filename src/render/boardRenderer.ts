@@ -7,9 +7,11 @@
 
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
 import { connectorPath } from "../domain/connectorPath";
+import type { Rect } from "../domain/geometry";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
 import { drawConnector } from "./connectorRenderer";
+import { SELECTION_COLOR, SELECTION_RECT_FILL } from "./palette";
 import {
   drawItem,
   drawResizeHandles,
@@ -49,6 +51,8 @@ export interface RenderBoardOptions {
   readonly images?: ImageCache;
   /** 編集中のアイテム。そのアイテムのテキストは Canvas 側では描かない。 */
   readonly editingItemId?: ItemId;
+  /** ドラッグ中の選択範囲（ワールド座標）。 */
+  readonly selectionRect?: Rect;
   /** 描画するコネクタ。アイテムの現在位置から経路を毎回計算する。 */
   readonly connectors?: Board["connectors"];
   readonly selectedConnectorId?: ConnectorId;
@@ -94,7 +98,7 @@ function drawItems(
   options: RenderBoardOptions,
 ): void {
   const items = options.items ?? [];
-  if (items.length === 0) {
+  if (items.length === 0 && options.selectionRect === undefined) {
     return;
   }
   const { devicePixelRatio: dpr, viewport } = options;
@@ -123,6 +127,8 @@ function drawItems(
     });
   }
 
+  drawSelectionRect(ctx, options);
+
   // 選択枠はすべてのアイテムより前面に描く
   const selectedIds = options.selectedIds;
   if (selectedIds !== undefined) {
@@ -139,6 +145,26 @@ function drawItems(
   }
 
   ctx.restore();
+}
+
+/** ドラッグ中の選択範囲を描く。 */
+function drawSelectionRect(
+  ctx: CanvasRenderingContext2D,
+  options: RenderBoardOptions,
+): void {
+  const rect = options.selectionRect;
+  if (rect === undefined) {
+    return;
+  }
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.width, rect.height);
+  ctx.fillStyle = SELECTION_RECT_FILL;
+  ctx.fill();
+  ctx.strokeStyle = SELECTION_COLOR;
+  // 変換が掛かった座標系で描くため、見た目の太さを一定にするには
+  // 拡大率で割る必要がある
+  ctx.lineWidth = 1 / options.viewport.scale;
+  ctx.stroke();
 }
 
 /** コネクタを描く。接続先が見つからないものは飛ばす。 */

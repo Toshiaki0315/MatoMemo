@@ -38,3 +38,6 @@ export const SHAPE_COLORS: ItemColors = {
 
 /** 選択中のアイテムを囲む枠の色。 */
 export const SELECTION_COLOR = "#3B82F6";
+
+/** 範囲ドラッグ中の選択範囲の塗り。下のアイテムが透けるよう薄くする。 */
+export const SELECTION_RECT_FILL = "rgba(59, 130, 246, 0.12)";

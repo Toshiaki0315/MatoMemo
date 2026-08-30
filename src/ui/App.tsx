@@ -83,6 +83,7 @@ export function App({
   const selectOnly = store((state) => state.selectOnly);
   const toggleSelection = store((state) => state.toggleSelection);
   const clearSelection = store((state) => state.clearSelection);
+  const selectMany = store((state) => state.selectMany);
   const connectItems = store((state) => state.connectItems);
   const removeConnector = store((state) => state.removeConnector);
   const filePath = store((state) => state.filePath);
@@ -412,6 +413,7 @@ export function App({
         selectedIds={selectedIds}
         onViewportChange={setViewport}
         onSelect={handleSelect}
+        onSelectMany={selectMany}
         onMoveSelected={moveSelected}
         onResizeItem={resizeItem}
         onDeleteSelected={removeSelected}

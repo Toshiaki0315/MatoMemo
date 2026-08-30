@@ -7,8 +7,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
+import type { Rect } from "../domain/geometry";
 import { hitTestConnector } from "../domain/connectorHitTest";
-import { hitTest } from "../domain/hitTest";
+import { rectFromCorners, type Point } from "../domain/geometry";
+import { hitTest, itemsWithinRect } from "../domain/hitTest";
 import {
   cursorForHandle,
   hitTestHandle,
@@ -35,6 +37,8 @@ export interface BoardCanvasProps {
    * @param additive Shift / Command を押しながらの操作か
    */
   readonly onSelect: (id: ItemId | null, additive: boolean) => void;
+  /** 範囲ドラッグで囲まれたアイテムをまとめて選択する。 */
+  readonly onSelectMany: (ids: readonly ItemId[], additive: boolean) => void;
   /** 選択中のアイテムをワールド座標で移動する。 */
   readonly onMoveSelected: (dx: number, dy: number) => void;
   /** アイテムをリサイズする。移動量はワールド座標。 */
@@ -86,6 +90,13 @@ interface Size {
 /** ドラッグの種類。 */
 type DragMode =
   | { readonly kind: "pan" }
+  | {
+      readonly kind: "select";
+      /** 範囲選択を始めたワールド座標。 */
+      readonly anchor: Point;
+      /** 開始時点の選択（Shift 併用のときに引き継ぐ）。 */
+      readonly base: readonly ItemId[];
+    }
   | { readonly kind: "item" }
   | { readonly kind: "resize"; readonly id: ItemId; readonly handle: ResizeHandle };
 
@@ -95,6 +106,7 @@ export function BoardCanvas({
   selectedIds,
   onViewportChange,
   onSelect,
+  onSelectMany,
   onMoveSelected,
   onResizeItem,
   onDeleteSelected,
@@ -116,6 +128,10 @@ export function BoardCanvas({
   const [isPanning, setIsPanning] = useState(false);
   /** ポインタの下にあるハンドル。カーソルの見た目に使う。 */
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
+  /** 範囲ドラッグ中の選択範囲（ワールド座標）。 */
+  const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
+  /** Space が押されているか。押している間はドラッグがパンになる。 */
+  const spacePressed = useRef(false);
 
   /**
    * 最新の props とドラッグ状態。
@@ -130,6 +146,7 @@ export function BoardCanvas({
     selectedIds,
     onViewportChange,
     onSelect,
+    onSelectMany,
     onMoveSelected,
     onResizeItem,
     onContextMenu,
@@ -146,6 +163,7 @@ export function BoardCanvas({
       selectedIds,
       onViewportChange,
       onSelect,
+      onSelectMany,
       onMoveSelected,
       onResizeItem,
       onContextMenu,
@@ -206,6 +224,7 @@ export function BoardCanvas({
       ...(theme !== undefined ? { theme } : {}),
       ...(images !== undefined ? { images } : {}),
       ...(editingItemId !== undefined ? { editingItemId } : {}),
+      ...(selectionRect !== null ? { selectionRect } : {}),
     });
   }, [
     canvas,
@@ -218,6 +237,7 @@ export function BoardCanvas({
     theme,
     images,
     editingItemId,
+    selectionRect,
   ]);
 
   // ホイールとドラッグの操作。preventDefault が必要なため React の合成イベント
@@ -292,8 +312,22 @@ export function BoardCanvas({
       const additive = event.shiftKey || event.metaKey;
 
       if (hit === undefined) {
-        drag.current = { origin, mode: { kind: "pan" } };
-        setIsPanning(true);
+        // Space を押しながらならキャンバスを動かす（デザインツールの慣例）。
+        // それ以外の空白ドラッグは範囲選択にする。
+        if (spacePressed.current) {
+          drag.current = { origin, mode: { kind: "pan" } };
+          setIsPanning(true);
+          return;
+        }
+        drag.current = {
+          origin,
+          mode: {
+            kind: "select",
+            anchor: world,
+            base: additive ? [...selectedIds] : [],
+          },
+        };
+        setSelectionRect({ x: world.x, y: world.y, width: 0, height: 0 });
         if (!additive) {
           onSelect(null, false);
         }
@@ -325,6 +359,16 @@ export function BoardCanvas({
 
       if (current.mode.kind === "pan") {
         onViewportChange(panBy(viewport, dx, dy));
+        return;
+      }
+      if (current.mode.kind === "select") {
+        const world = toWorld(viewport, toCanvasPoint(event));
+        const rect = rectFromCorners(current.mode.anchor, world);
+        setSelectionRect(rect);
+        const inside = itemsWithinRect(latest.current.board.items, rect).map(
+          (item) => item.id,
+        );
+        latest.current.onSelectMany([...current.mode.base, ...inside], false);
         return;
       }
       if (current.mode.kind === "resize") {
@@ -385,7 +429,8 @@ export function BoardCanvas({
       }
       drag.current = null;
       setIsPanning(false);
-      if (current.mode.kind !== "pan") {
+      setSelectionRect(null);
+      if (current.mode.kind === "item" || current.mode.kind === "resize") {
         latest.current.onEndInteraction?.();
       }
     };
@@ -419,6 +464,37 @@ export function BoardCanvas({
     // 依存は canvas のみ。props は latest ref 経由で常に最新を読むため、
     // リスナを張り替える必要がない。
   }, [canvas]);
+
+  // Space を押している間はキャンバスを動かせるようにする。
+  useEffect(() => {
+    const setPressed = (pressed: boolean) => {
+      spacePressed.current = pressed;
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || isEditableTarget(event.target)) {
+        return;
+      }
+      // Space でのスクロールを止める
+      event.preventDefault();
+      setPressed(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setPressed(false);
+      }
+    };
+    // ウィンドウから離れた隙に離された場合に備える
+    const handleBlur = () => setPressed(false);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   // Delete / Backspace で選択中のアイテムを削除する。
   useEffect(() => {
