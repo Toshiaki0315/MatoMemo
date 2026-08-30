@@ -6,8 +6,13 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { Board, ItemId } from "../domain/board";
+import type { Board, Item, ItemId } from "../domain/board";
 import { hitTest } from "../domain/hitTest";
+import {
+  cursorForHandle,
+  hitTestHandle,
+  type ResizeHandle,
+} from "../domain/resize";
 import { panBy, toWorld, zoomAt, type Viewport } from "../domain/viewport";
 import { renderBoard, type CanvasTheme } from "../render/boardRenderer";
 import type { ImageCache } from "../render/itemRenderer";
@@ -31,7 +36,19 @@ export interface BoardCanvasProps {
   readonly onSelect: (id: ItemId | null, additive: boolean) => void;
   /** 選択中のアイテムをワールド座標で移動する。 */
   readonly onMoveSelected: (dx: number, dy: number) => void;
+  /** アイテムをリサイズする。移動量はワールド座標。 */
+  readonly onResizeItem: (
+    id: ItemId,
+    handle: ResizeHandle,
+    dx: number,
+    dy: number,
+  ) => void;
   readonly onDeleteSelected: () => void;
+  /** 右クリックされたとき。空白部分なら id は null。 */
+  readonly onContextMenu?: (
+    id: ItemId | null,
+    position: { x: number; y: number },
+  ) => void;
   /** アイテムがダブルクリックされたとき。 */
   readonly onActivateItem?: (id: ItemId) => void;
   readonly theme?: CanvasTheme;
@@ -46,7 +63,10 @@ interface Size {
 }
 
 /** ドラッグの種類。 */
-type DragMode = "pan" | "item";
+type DragMode =
+  | { readonly kind: "pan" }
+  | { readonly kind: "item" }
+  | { readonly kind: "resize"; readonly id: ItemId; readonly handle: ResizeHandle };
 
 export function BoardCanvas({
   board,
@@ -55,7 +75,9 @@ export function BoardCanvas({
   onViewportChange,
   onSelect,
   onMoveSelected,
+  onResizeItem,
   onDeleteSelected,
+  onContextMenu,
   onActivateItem,
   theme,
   images,
@@ -66,6 +88,8 @@ export function BoardCanvas({
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  /** ポインタの下にあるハンドル。カーソルの見た目に使う。 */
+  const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
 
   /**
    * 最新の props とドラッグ状態。
@@ -81,6 +105,8 @@ export function BoardCanvas({
     onViewportChange,
     onSelect,
     onMoveSelected,
+    onResizeItem,
+    onContextMenu,
     onActivateItem,
   });
   useEffect(() => {
@@ -91,6 +117,8 @@ export function BoardCanvas({
       onViewportChange,
       onSelect,
       onMoveSelected,
+      onResizeItem,
+      onContextMenu,
       onActivateItem,
     };
   });
@@ -184,12 +212,27 @@ export function BoardCanvas({
       }
       const { board, viewport, selectedIds, onSelect } = latest.current;
       const world = toWorld(viewport, toCanvasPoint(event));
-      const hit = hitTest(board.items, world);
-      const additive = event.shiftKey || event.metaKey;
       const origin = { x: event.clientX, y: event.clientY };
 
+      // リサイズハンドルはアイテム本体より優先して判定する。
+      // 角のハンドルはアイテムの内側にも重なっているため。
+      const target = findResizeTarget(board.items, selectedIds);
+      if (target !== undefined) {
+        const handle = hitTestHandle(target, world, viewport.scale);
+        if (handle !== undefined) {
+          drag.current = {
+            origin,
+            mode: { kind: "resize", id: target.id, handle },
+          };
+          return;
+        }
+      }
+
+      const hit = hitTest(board.items, world);
+      const additive = event.shiftKey || event.metaKey;
+
       if (hit === undefined) {
-        drag.current = { origin, mode: "pan" };
+        drag.current = { origin, mode: { kind: "pan" } };
         setIsPanning(true);
         if (!additive) {
           onSelect(null, false);
@@ -197,7 +240,7 @@ export function BoardCanvas({
         return;
       }
 
-      drag.current = { origin, mode: "item" };
+      drag.current = { origin, mode: { kind: "item" } };
       // 選択済みのアイテムを掴んだ場合は選択を変えない。変えてしまうと
       // 複数選択したままの移動ができなくなる。
       if (additive || !selectedIds.has(hit.id)) {
@@ -210,7 +253,8 @@ export function BoardCanvas({
       if (current === null) {
         return;
       }
-      const { viewport, onViewportChange, onMoveSelected } = latest.current;
+      const { viewport, onViewportChange, onMoveSelected, onResizeItem } =
+        latest.current;
       const dx = event.clientX - current.origin.x;
       const dy = event.clientY - current.origin.y;
       drag.current = {
@@ -218,12 +262,47 @@ export function BoardCanvas({
         mode: current.mode,
       };
 
-      if (current.mode === "pan") {
+      if (current.mode.kind === "pan") {
         onViewportChange(panBy(viewport, dx, dy));
+        return;
+      }
+      if (current.mode.kind === "resize") {
+        onResizeItem(
+          current.mode.id,
+          current.mode.handle,
+          dx / viewport.scale,
+          dy / viewport.scale,
+        );
         return;
       }
       // アイテムの移動量はワールド座標に直す
       onMoveSelected(dx / viewport.scale, dy / viewport.scale);
+    };
+
+    /** ドラッグしていないときは、ハンドルの上でカーソルを変える。 */
+    const handleHover = (event: PointerEvent) => {
+      if (drag.current !== null) {
+        return;
+      }
+      const { board, viewport, selectedIds } = latest.current;
+      const target = findResizeTarget(board.items, selectedIds);
+      if (target === undefined) {
+        setHoveredHandle(null);
+        return;
+      }
+      const world = toWorld(viewport, toCanvasPoint(event));
+      setHoveredHandle(hitTestHandle(target, world, viewport.scale) ?? null);
+    };
+
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      const { board, viewport, onContextMenu } = latest.current;
+      if (onContextMenu === undefined) {
+        return;
+      }
+      const world = toWorld(viewport, toCanvasPoint(event));
+      const hit = hitTest(board.items, world);
+      onContextMenu(hit?.id ?? null, { x: event.clientX, y: event.clientY });
     };
 
     const handlePointerUp = () => {
@@ -246,6 +325,8 @@ export function BoardCanvas({
     canvas.addEventListener("wheel", handleWheel, { passive: false });
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("dblclick", handleDoubleClick);
+    canvas.addEventListener("contextmenu", handleContextMenu);
+    canvas.addEventListener("pointermove", handleHover);
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
 
@@ -253,6 +334,8 @@ export function BoardCanvas({
       canvas.removeEventListener("wheel", handleWheel);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("dblclick", handleDoubleClick);
+      canvas.removeEventListener("contextmenu", handleContextMenu);
+      canvas.removeEventListener("pointermove", handleHover);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
@@ -282,9 +365,31 @@ export function BoardCanvas({
       ref={setCanvas}
       data-testid="board-canvas"
       className="board-canvas"
-      style={{ cursor: isPanning ? "grabbing" : "grab" }}
+      style={{ cursor: currentCursor(isPanning, hoveredHandle) }}
     />
   );
+}
+
+/** 1 件だけ選択しているアイテムを返す。リサイズの対象。 */
+function findResizeTarget(
+  items: readonly Item[],
+  selectedIds: ReadonlySet<ItemId>,
+): Item | undefined {
+  if (selectedIds.size !== 1) {
+    return undefined;
+  }
+  return items.find((item) => selectedIds.has(item.id));
+}
+
+/** 状況に応じたカーソルの見た目。 */
+function currentCursor(
+  isPanning: boolean,
+  hoveredHandle: ResizeHandle | null,
+): string {
+  if (hoveredHandle !== null) {
+    return cursorForHandle(hoveredHandle);
+  }
+  return isPanning ? "grabbing" : "grab";
 }
 
 /** テキスト入力欄にフォーカスがあるかを判定する。 */

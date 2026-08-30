@@ -44,10 +44,14 @@ body,
   overscroll-behavior: none;
 }
 
+/*
+ * ズームコントロールは右上に置く。下部中央のツールバーは幅が広く、
+ * ウィンドウを狭めると右下に置いた場合に重なってしまうため。
+ */
 .zoom-controls {
   position: absolute;
   right: 16px;
-  bottom: 16px;
+  top: 16px;
   display: flex;
   align-items: stretch;
   gap: 1px;
@@ -225,4 +229,41 @@ body,
 
 .error-banner button:hover {
   background: rgba(0, 0, 0, 0.07);
+}
+
+.context-menu {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 10px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  user-select: none;
+}
+
+.context-menu button {
+  padding: 7px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.context-menu button:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+}
+
+.context-menu button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }

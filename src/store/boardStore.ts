@@ -18,6 +18,13 @@ import {
   replaceItem as replaceItemInBoard,
 } from "../domain/boardOps";
 import { createId as defaultCreateId } from "../domain/ids";
+import { resizeRect, type ResizeHandle } from "../domain/resize";
+import {
+  bringForward,
+  bringToFront,
+  sendBackward,
+  sendToBack,
+} from "../domain/zorder";
 import { createViewport, type Viewport } from "../domain/viewport";
 
 export interface BoardState {
@@ -36,7 +43,18 @@ export interface BoardState {
   addItem(create: (id: ItemId) => Item): ItemId;
   replaceItem(item: Item): void;
   moveSelected(dx: number, dy: number): void;
+  /**
+   * アイテムをリサイズする。画像は原寸の縦横比を必ず保つ。
+   * @param dx ハンドルの移動量（ワールド座標）
+   */
+  resizeItem(id: ItemId, handle: ResizeHandle, dx: number, dy: number): void;
   removeSelected(): void;
+
+  /** 選択中のアイテムの重なり順を変える。 */
+  bringSelectedToFront(): void;
+  sendSelectedToBack(): void;
+  bringSelectedForward(): void;
+  sendSelectedBackward(): void;
 
   selectOnly(id: ItemId): void;
   toggleSelection(id: ItemId): void;
@@ -85,6 +103,31 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       }));
     },
 
+    resizeItem(id, handle, dx, dy) {
+      set((state) => {
+        const item = state.board.items.find((candidate) => candidate.id === id);
+        if (item === undefined) {
+          return state;
+        }
+        // 画像は縦横比を維持する。原寸の比を基準にすることで、
+        // 何度リサイズしても元の比から少しずつずれていくことがない。
+        const options =
+          item.type === "image"
+            ? { aspectRatio: item.naturalWidth / item.naturalHeight }
+            : {};
+        const bounds = resizeRect(
+          { x: item.x, y: item.y, width: item.width, height: item.height },
+          handle,
+          dx,
+          dy,
+          options,
+        );
+        return {
+          board: replaceItemInBoard(state.board, { ...item, ...bounds }),
+        };
+      });
+    },
+
     removeSelected() {
       set((state) => {
         if (state.selectedIds.size === 0) {
@@ -95,6 +138,22 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
           selectedIds: new Set<ItemId>(),
         };
       });
+    },
+
+    bringSelectedToFront() {
+      set((state) => reorder(state, bringToFront));
+    },
+
+    sendSelectedToBack() {
+      set((state) => reorder(state, sendToBack));
+    },
+
+    bringSelectedForward() {
+      set((state) => reorder(state, bringForward));
+    },
+
+    sendSelectedBackward() {
+      set((state) => reorder(state, sendBackward));
     },
 
     selectOnly(id) {
@@ -126,6 +185,21 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       return board.items.filter((item) => selectedIds.has(item.id));
     },
   }));
+}
+
+/** 重なり順の操作を適用する。並びが変わらない場合は状態をそのまま返す。 */
+function reorder(
+  state: BoardState,
+  operation: (
+    items: readonly Item[],
+    ids: readonly ItemId[],
+  ) => readonly Item[],
+): Partial<BoardState> | BoardState {
+  const items = operation(state.board.items, [...state.selectedIds]);
+  if (items === state.board.items) {
+    return state;
+  }
+  return { board: { ...state.board, items } };
 }
 
 /** アプリケーションで共有するストア。 */

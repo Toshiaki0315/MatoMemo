@@ -47,7 +47,9 @@ function renderCanvas(options: RenderOptions = {}) {
     onViewportChange: vi.fn(),
     onSelect: vi.fn(),
     onMoveSelected: vi.fn(),
+    onResizeItem: vi.fn(),
     onDeleteSelected: vi.fn(),
+    onContextMenu: vi.fn(),
     onActivateItem: vi.fn(),
   };
   const view = render(
@@ -108,6 +110,7 @@ describe("BoardCanvas: 描画", () => {
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
         onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
         images={new Map([["img", bitmap]])}
       />,
@@ -135,6 +138,7 @@ describe("BoardCanvas: 描画", () => {
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
         onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
         theme={CANVAS_THEME.dark}
       />,
@@ -458,6 +462,7 @@ describe("BoardCanvas: ダブルクリック", () => {
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
         onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
       />,
     );
@@ -499,6 +504,7 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
               board: moveItems(prev.board, [...prev.selectedIds], dx, dy),
             }))
           }
+          onResizeItem={() => {}}
           onDeleteSelected={() => {}}
         />
       );
@@ -528,6 +534,7 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
           onViewportChange={setViewport}
           onSelect={vi.fn()}
           onMoveSelected={vi.fn()}
+          onResizeItem={vi.fn()}
           onDeleteSelected={vi.fn()}
         />
       );
@@ -557,10 +564,174 @@ describe("BoardCanvas: 編集中のアイテム", () => {
         onViewportChange={vi.fn()}
         onSelect={vi.fn()}
         onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
         onDeleteSelected={vi.fn()}
         editingItemId="s1"
       />,
     );
     expect(canvasStub.mock.callsOf("fillText")).toHaveLength(0);
+  });
+});
+
+describe("BoardCanvas: リサイズ", () => {
+  /** 付箋 1 枚を選択した状態で描画する。 */
+  function renderSelected() {
+    return renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+  }
+
+  it("ハンドルを掴んでドラッグするとリサイズになる", () => {
+    const { canvas, onResizeItem } = renderSelected();
+    // 南東のハンドルは (100, 100)
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 120 });
+    expect(onResizeItem).toHaveBeenCalledWith("s1", "se", 30, 20);
+  });
+
+  it("リサイズ中はアイテムを動かさない", () => {
+    const { canvas, onMoveSelected } = renderSelected();
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 120 });
+    expect(onMoveSelected).not.toHaveBeenCalled();
+  });
+
+  it("ハンドルはアイテム本体より優先される", () => {
+    const { canvas, onSelect } = renderSelected();
+    // 南東の角はアイテムの内側でもある
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("拡大時は移動量をワールド座標に直す", () => {
+    const { canvas, onResizeItem } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+      viewport: { x: 0, y: 0, scale: 2 },
+    });
+    // 2 倍表示では南東のハンドルは画面上 (200, 200)
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 200 });
+    fireEvent.pointerMove(window, { clientX: 220, clientY: 200 });
+    expect(onResizeItem).toHaveBeenCalledWith("s1", "se", 10, 0);
+  });
+
+  it("北西のハンドルも掴める", () => {
+    const { canvas, onResizeItem } = renderSelected();
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    expect(onResizeItem).toHaveBeenCalledWith("s1", "nw", 10, 10);
+  });
+
+  it("選択していなければハンドルは無い", () => {
+    const { canvas, onResizeItem, onSelect } = renderCanvas({
+      board: boardWithSticky(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 120 });
+    expect(onResizeItem).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith("s1", false);
+  });
+
+  it("複数選択中はハンドルを出さない", () => {
+    const { canvas, onResizeItem } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1", "other"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 120 });
+    expect(onResizeItem).not.toHaveBeenCalled();
+  });
+
+  it("選択 id に対応するアイテムが無ければハンドルを出さない", () => {
+    const { canvas, onResizeItem } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["missing"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 120 });
+    expect(onResizeItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("BoardCanvas: カーソル", () => {
+  it("ハンドルの上ではリサイズカーソルにする", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
+    expect(canvas.style.cursor).toBe("nwse-resize");
+  });
+
+  it("ハンドルから離れると通常のカーソルに戻る", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { clientX: 50, clientY: 50 });
+    expect(canvas.style.cursor).toBe("grab");
+  });
+
+  it("選択していなければ通常のカーソルのまま", () => {
+    const { canvas } = renderCanvas({ board: boardWithSticky() });
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
+    expect(canvas.style.cursor).toBe("grab");
+  });
+
+  it("ドラッグ中はカーソルを変えない", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
+    expect(canvas.style.cursor).toBe("grabbing");
+  });
+});
+
+describe("BoardCanvas: 右クリック", () => {
+  it("アイテムの上で右クリックすると id と位置を通知する", () => {
+    const { canvas, onContextMenu } = renderCanvas({
+      board: boardWithSticky(),
+    });
+    fireEvent.contextMenu(canvas, { clientX: 50, clientY: 60 });
+    expect(onContextMenu).toHaveBeenCalledWith("s1", { x: 50, y: 60 });
+  });
+
+  it("空白部分の右クリックでは id が null になる", () => {
+    const { canvas, onContextMenu } = renderCanvas({
+      board: boardWithSticky(),
+    });
+    fireEvent.contextMenu(canvas, { clientX: 500, clientY: 500 });
+    expect(onContextMenu).toHaveBeenCalledWith(null, { x: 500, y: 500 });
+  });
+
+  it("既定のコンテキストメニューを抑止する", () => {
+    const { canvas } = renderCanvas({ board: boardWithSticky() });
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("onContextMenu が未指定でも壊れない", () => {
+    render(
+      <BoardCanvas
+        board={boardWithSticky()}
+        viewport={createViewport()}
+        selectedIds={new Set()}
+        onViewportChange={vi.fn()}
+        onSelect={vi.fn()}
+        onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
+        onDeleteSelected={vi.fn()}
+      />,
+    );
+    const canvas = screen.getAllByTestId("board-canvas")[0] as HTMLCanvasElement;
+    expect(() => fireEvent.contextMenu(canvas, { clientX: 50, clientY: 50 })).not.toThrow();
   });
 });

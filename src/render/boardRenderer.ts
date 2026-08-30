@@ -8,7 +8,12 @@
 import type { Item, ItemId } from "../domain/board";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
-import { drawItem, drawSelectionOutline, type ImageCache } from "./itemRenderer";
+import {
+  drawItem,
+  drawResizeHandles,
+  drawSelectionOutline,
+  type ImageCache,
+} from "./itemRenderer";
 
 /** キャンバスの配色。 */
 export interface CanvasTheme {
@@ -112,10 +117,15 @@ function drawItems(
   // 選択枠はすべてのアイテムより前面に描く
   const selectedIds = options.selectedIds;
   if (selectedIds !== undefined) {
-    for (const item of items) {
-      if (selectedIds.has(item.id)) {
-        drawSelectionOutline(ctx, item, viewport.scale);
-      }
+    const selected = items.filter((item) => selectedIds.has(item.id));
+    for (const item of selected) {
+      drawSelectionOutline(ctx, item, viewport.scale);
+    }
+    // ハンドルは 1 件だけ選んでいるときに出す。複数選択のまま個別に
+    // リサイズできても混乱するだけなので出さない。
+    const only = selected.length === 1 ? selected[0] : undefined;
+    if (only !== undefined) {
+      drawResizeHandles(ctx, only, viewport.scale);
     }
   }
 

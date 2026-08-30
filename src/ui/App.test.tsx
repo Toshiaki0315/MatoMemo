@@ -503,3 +503,155 @@ describe("App: 画像の取り込み", () => {
     expect(() => render(<App store={store} />)).not.toThrow();
   });
 });
+
+describe("App: 重なり順の変更", () => {
+  /** 付箋を 3 枚追加する。 */
+  function addThree() {
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    return store.getState().board.items.map((item) => item.id);
+  }
+
+  /**
+   * 指定したアイテムを右クリックする。
+   *
+   * 追加のたびに位置がずれる（カスケード）ので、次のアイテムに覆われて
+   * いない左上寄りの点を狙う。中心はすべてのアイテムが重なるため、
+   * 常に最前面が当たってしまう。
+   */
+  function rightClickItem(index: number) {
+    const item = store.getState().board.items[index];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+  }
+
+  /** 現在の並びを id の配列で返す。 */
+  function order(): string[] {
+    return store.getState().board.items.map((item) => item.id);
+  }
+
+  it("右クリックでメニューが出る", () => {
+    renderApp();
+    addThree();
+    rightClickItem(2);
+    expect(screen.getByRole("menu", { name: "アイテムの操作" })).toBeInTheDocument();
+  });
+
+  it("空白部分の右クリックではメニューを出さない", () => {
+    renderApp();
+    addThree();
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: 5,
+      clientY: 5,
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("未選択のアイテムを右クリックするとそのアイテムが対象になる", () => {
+    renderApp();
+    const ids = addThree();
+    // 最前面の付箋が選択されている状態で、最背面を右クリックする
+    rightClickItem(0);
+    expect(store.getState().selectedIds).toEqual(new Set([ids[0]]));
+  });
+
+  it("最前面へ移動できる", () => {
+    renderApp();
+    const ids = addThree();
+    rightClickItem(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "最前面へ移動" }));
+    expect(order()).toEqual([ids[1], ids[2], ids[0]]);
+  });
+
+  it("最背面へ移動できる", () => {
+    renderApp();
+    const ids = addThree();
+    rightClickItem(2);
+    fireEvent.click(screen.getByRole("menuitem", { name: "最背面へ移動" }));
+    expect(order()).toEqual([ids[2], ids[0], ids[1]]);
+  });
+
+  it("一つ手前へ移動できる", () => {
+    renderApp();
+    const ids = addThree();
+    rightClickItem(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "一つ手前へ" }));
+    expect(order()).toEqual([ids[1], ids[0], ids[2]]);
+  });
+
+  it("一つ奥へ移動できる", () => {
+    renderApp();
+    const ids = addThree();
+    rightClickItem(2);
+    fireEvent.click(screen.getByRole("menuitem", { name: "一つ奥へ" }));
+    expect(order()).toEqual([ids[0], ids[2], ids[1]]);
+  });
+
+  it("メニューから削除できる", () => {
+    renderApp();
+    addThree();
+    rightClickItem(2);
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+    expect(store.getState().board.items).toHaveLength(2);
+  });
+
+  it("操作するとメニューが閉じる", () => {
+    renderApp();
+    addThree();
+    rightClickItem(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "最前面へ移動" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("キャンバスを触るとメニューが閉じる", () => {
+    renderApp();
+    addThree();
+    rightClickItem(0);
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: 5,
+      clientY: 5,
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("右クリック時はテキスト編集を終える", () => {
+    renderApp();
+    addThree();
+    const item = store.getState().board.items[2];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    rightClickItem(2);
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+});
+
+describe("App: リサイズ", () => {
+  it("ハンドルをドラッグするとサイズが変わる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const before = store.getState().board.items[0];
+    const canvas = screen.getByTestId("board-canvas");
+
+    // 南東のハンドル
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: (before?.x ?? 0) + (before?.width ?? 0),
+      clientY: (before?.y ?? 0) + (before?.height ?? 0),
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (before?.x ?? 0) + (before?.width ?? 0) + 50,
+      clientY: (before?.y ?? 0) + (before?.height ?? 0) + 30,
+    });
+
+    expect(store.getState().board.items[0]).toMatchObject({
+      width: (before?.width ?? 0) + 50,
+      height: (before?.height ?? 0) + 30,
+    });
+  });
+});

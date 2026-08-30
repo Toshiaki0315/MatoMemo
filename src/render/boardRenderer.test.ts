@@ -195,3 +195,49 @@ describe("renderBoard: 編集中のアイテム", () => {
     expect(mock.callsOf("fillText")).toHaveLength(1);
   });
 });
+
+describe("renderBoard: リサイズハンドル", () => {
+  const a = createStickyNote({ id: "a", x: 0, y: 0 });
+  const b = createStickyNote({ id: "b", x: 300, y: 0 });
+
+  /**
+   * ハンドルの数を数える。選択枠自体も rect で描かれるため、
+   * 選択件数分の枠を差し引く。
+   */
+  function handleCount(
+    mock: ReturnType<typeof createMockContext>,
+    selectedCount: number,
+  ): number {
+    return mock.callsOf("rect").length - selectedCount;
+  }
+
+  it("1 件だけ選択しているときはハンドルを描く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      items: [a, b],
+      selectedIds: new Set(["a"]),
+    });
+    expect(handleCount(mock, 1)).toBe(8);
+  });
+
+  it("複数選択のときはハンドルを描かない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      items: [a, b],
+      selectedIds: new Set(["a", "b"]),
+    });
+    expect(handleCount(mock, 2)).toBe(0);
+  });
+
+  it("何も選択していなければハンドルを描かない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      items: [a, b],
+      selectedIds: new Set(),
+    });
+    expect(handleCount(mock, 0)).toBe(0);
+  });
+});

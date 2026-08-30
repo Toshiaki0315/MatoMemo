@@ -20,6 +20,7 @@ import {
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas } from "./BoardCanvas";
+import { ContextMenu } from "./ContextMenu";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
 import { Toolbar } from "./Toolbar";
@@ -64,12 +65,22 @@ export function App({
   const selectOnly = store((state) => state.selectOnly);
   const toggleSelection = store((state) => state.toggleSelection);
   const clearSelection = store((state) => state.clearSelection);
+  const bringSelectedToFront = store((state) => state.bringSelectedToFront);
+  const sendSelectedToBack = store((state) => state.sendSelectedToBack);
+  const bringSelectedForward = store((state) => state.bringSelectedForward);
+  const sendSelectedBackward = store((state) => state.sendSelectedBackward);
   const replaceItem = store((state) => state.replaceItem);
+  const resizeItem = store((state) => state.resizeItem);
 
   /** 編集中のアイテム。null なら編集していない。 */
   const [editingId, setEditingId] = useState<ItemId | null>(null);
   /** 画像の取り込みに失敗したときのメッセージ。 */
   const [error, setError] = useState<string | null>(null);
+  /** 右クリックメニューの表示位置。null なら出していない。 */
+  const [menuPosition, setMenuPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
 
@@ -143,10 +154,27 @@ export function App({
     }
   }, [addItem, imagePicker, nextItemPosition]);
 
+  const handleContextMenu = useCallback(
+    (id: ItemId | null, position: { x: number; y: number }) => {
+      if (id === null) {
+        setMenuPosition(null);
+        return;
+      }
+      // 未選択のアイテムを右クリックしたら、そのアイテムを対象にする
+      if (!selectedIds.has(id)) {
+        selectOnly(id);
+      }
+      setEditingId(null);
+      setMenuPosition(position);
+    },
+    [selectOnly, selectedIds],
+  );
+
   const handleSelect = useCallback(
     (id: ItemId | null, additive: boolean) => {
-      // 別のアイテムを触ったら編集を終える
+      // 別のアイテムを触ったら編集とメニューを終える
       setEditingId((current) => (current === id ? current : null));
+      setMenuPosition(null);
       if (id === null) {
         clearSelection();
         return;
@@ -185,7 +213,9 @@ export function App({
         onViewportChange={setViewport}
         onSelect={handleSelect}
         onMoveSelected={moveSelected}
+        onResizeItem={resizeItem}
         onDeleteSelected={removeSelected}
+        onContextMenu={handleContextMenu}
         onActivateItem={handleActivateItem}
         images={images}
         {...(editingId !== null ? { editingItemId: editingId } : {})}
@@ -220,6 +250,20 @@ export function App({
         canDelete={selectedIds.size > 0}
         onDeleteSelected={removeSelected}
       />
+
+      {menuPosition === null ? null : (
+        <ContextMenu
+          position={menuPosition}
+          onClose={() => setMenuPosition(null)}
+          actions={[
+            { label: "最前面へ移動", onSelect: bringSelectedToFront },
+            { label: "一つ手前へ", onSelect: bringSelectedForward },
+            { label: "一つ奥へ", onSelect: sendSelectedBackward },
+            { label: "最背面へ移動", onSelect: sendSelectedToBack },
+            { label: "削除", onSelect: removeSelected },
+          ]}
+        />
+      )}
 
       {error === null ? null : (
         <div className="error-banner" role="alert">

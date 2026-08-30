@@ -6,7 +6,11 @@ import {
   createText,
 } from "../domain/board";
 import { createMockContext } from "../test/mockCanvas";
-import { drawItem, drawSelectionOutline } from "./itemRenderer";
+import {
+  drawItem,
+  drawResizeHandles,
+  drawSelectionOutline,
+} from "./itemRenderer";
 import { ITEM_TEXT_COLOR, SELECTION_COLOR, STICKY_PALETTE } from "./palette";
 
 describe("drawItem: 付箋", () => {
@@ -229,5 +233,40 @@ describe("drawItem: 編集中のテキストを隠す", () => {
       hideText: true,
     });
     expect(mock.calls).toEqual([]);
+  });
+});
+
+describe("drawResizeHandles", () => {
+  const item = createStickyNote({
+    id: "s",
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+  });
+
+  it("8 個のハンドルを描く", () => {
+    const mock = createMockContext();
+    drawResizeHandles(mock.ctx, item, 1);
+    expect(mock.callsOf("rect")).toHaveLength(8);
+    expect(mock.callsOf("fill")).toHaveLength(8);
+    expect(mock.callsOf("stroke")).toHaveLength(8);
+  });
+
+  it("ハンドルはアイテムの角と辺の中点に置く", () => {
+    const mock = createMockContext();
+    drawResizeHandles(mock.ctx, item, 1);
+    const rects = mock.callsOf("rect").map((call) => call.args.slice(0, 2));
+    // 左上のハンドル（一辺 8px なので中心から 4 ずれる）
+    expect(rects).toContainEqual([-4, -4]);
+    // 右下のハンドル
+    expect(rects).toContainEqual([96, 96]);
+  });
+
+  it("拡大率に反比例して小さくし、見た目の大きさを保つ", () => {
+    const mock = createMockContext();
+    drawResizeHandles(mock.ctx, item, 4);
+    const size = mock.callsOf("rect")[0]?.args[2];
+    expect(size).toBe(2);
   });
 });

@@ -8,6 +8,11 @@
 import type { Item, ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
 import type { ImageItem } from "../domain/board";
 import {
+  HANDLE_SIZE,
+  RESIZE_HANDLES,
+  handlePosition,
+} from "../domain/resize";
+import {
   ITEM_TEXT_COLOR,
   SELECTION_COLOR,
   SHAPE_COLORS,
@@ -203,6 +208,39 @@ export function drawSelectionOutline(
   // 拡大率で割る必要がある
   ctx.lineWidth = SELECTION_LINE_WIDTH / scale;
   ctx.stroke();
+}
+
+/**
+ * リサイズハンドルを描く。
+ *
+ * ハンドルは拡大率によらず同じ大きさに見せたいので、辺の長さを
+ * 拡大率で割ってワールド座標に換算する。
+ */
+export function drawResizeHandles(
+  ctx: CanvasRenderingContext2D,
+  item: Item,
+  scale: number,
+): void {
+  const size = HANDLE_SIZE / scale;
+  const half = size / 2;
+  const bounds = {
+    x: item.x,
+    y: item.y,
+    width: item.width,
+    height: item.height,
+  };
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.strokeStyle = SELECTION_COLOR;
+  ctx.lineWidth = SELECTION_LINE_WIDTH / scale;
+
+  for (const handle of RESIZE_HANDLES) {
+    const center = handlePosition(bounds, handle);
+    ctx.beginPath();
+    ctx.rect(center.x - half, center.y - half, size, size);
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 /** 外接矩形に内接する楕円のパスを引く。 */
