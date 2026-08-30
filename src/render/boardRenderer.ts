@@ -5,8 +5,10 @@
  * 状態を持たない。呼び出し側が毎フレーム全体を描き直す。
  */
 
+import type { Item, ItemId } from "../domain/board";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
+import { drawItem, drawSelectionOutline, type ImageCache } from "./itemRenderer";
 
 /** キャンバスの配色。 */
 export interface CanvasTheme {
@@ -34,6 +36,10 @@ export interface RenderBoardOptions {
   readonly viewport: Viewport;
   readonly theme?: CanvasTheme;
   readonly showGrid?: boolean;
+  /** 背面から前面の順に並ぶアイテム。 */
+  readonly items?: readonly Item[];
+  readonly selectedIds?: ReadonlySet<ItemId>;
+  readonly images?: ImageCache;
 }
 
 /** グリッド線の太さ (px)。ズームしても一定にするため画面座標で描く。 */
@@ -58,6 +64,54 @@ export function renderBoard(
 
   if (options.showGrid !== false) {
     drawGrid(ctx, viewport, width, height, theme);
+  }
+
+  drawItems(ctx, options);
+
+  ctx.restore();
+}
+
+/**
+ * アイテムをワールド座標のまま描く。
+ *
+ * ここでビューポートの変換を ctx に載せる。デバイスピクセル比と合成する
+ * ことで、描画側は座標変換を意識せずワールド座標をそのまま渡せる。
+ */
+function drawItems(
+  ctx: CanvasRenderingContext2D,
+  options: RenderBoardOptions,
+): void {
+  const items = options.items ?? [];
+  if (items.length === 0) {
+    return;
+  }
+  const { devicePixelRatio: dpr, viewport } = options;
+  const combined = dpr * viewport.scale;
+
+  ctx.save();
+  ctx.setTransform(
+    combined,
+    0,
+    0,
+    combined,
+    dpr * viewport.x,
+    dpr * viewport.y,
+  );
+
+  const drawOptions =
+    options.images !== undefined ? { images: options.images } : {};
+  for (const item of items) {
+    drawItem(ctx, item, drawOptions);
+  }
+
+  // 選択枠はすべてのアイテムより前面に描く
+  const selectedIds = options.selectedIds;
+  if (selectedIds !== undefined) {
+    for (const item of items) {
+      if (selectedIds.has(item.id)) {
+        drawSelectionOutline(ctx, item, viewport.scale);
+      }
+    }
   }
 
   ctx.restore();

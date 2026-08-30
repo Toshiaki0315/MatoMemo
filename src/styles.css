@@ -76,3 +76,68 @@ body,
 .zoom-controls button:hover {
   background: var(--toolbar-hover);
 }
+
+.toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 12px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--toolbar-border);
+}
+
+.toolbar button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 13px;
+  /* ラベルが縦に折り返されないようにする */
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+}
+
+.toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.toolbar .swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toolbar .swatch:hover {
+  transform: scale(1.12);
+}
