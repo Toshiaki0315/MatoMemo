@@ -4,7 +4,7 @@
 
 import {
   arrowHead,
-  CAP_LENGTHS,
+  capLength,
   connectorEnds,
   type ConnectorPath,
 } from "../domain/connectorPath";
@@ -53,7 +53,9 @@ export function drawConnector(
   ctx.lineWidth = stroke.strokeWidth / scale;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.setLineDash(dashPattern(stroke.strokeStyle, scale));
+  ctx.setLineDash(
+    dashPattern(stroke.strokeStyle, stroke.strokeWidth, scale),
+  );
 
   ctx.beginPath();
   if (path.kind === "curve") {
@@ -73,7 +75,8 @@ export function drawConnector(
   // 矢印や丸は破線にしないので、ここで戻しておく
   ctx.setLineDash([]);
 
-  const size = CAP_LENGTHS[options.capSize ?? "medium"] / scale;
+  const size =
+    capLength(options.capSize ?? "medium", stroke.strokeWidth) / scale;
   drawCap(ctx, path, "from", options.startCap ?? "none", size);
   drawCap(ctx, path, "to", options.endCap ?? "none", size);
 }

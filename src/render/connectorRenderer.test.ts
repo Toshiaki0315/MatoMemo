@@ -203,3 +203,53 @@ describe("drawConnector: 両端の矢印", () => {
     expect(mock.callsOf("closePath")).toHaveLength(1);
   });
 });
+
+describe("drawConnector: 太さに応じた調整", () => {
+  /** 指定した太さ・線種で引いたときの破線パターン。 */
+  function dashOf(strokeWidth: number) {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, {
+      stroke: { strokeWidth, strokeStyle: "dashed" },
+    });
+    return mock.callsOf("setLineDash")[0]?.args[0] as number[];
+  }
+
+  /** 指定した太さで矢印を描いたときの矢羽根の長さ。 */
+  function arrowLengthOf(strokeWidth: number) {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, {
+      endCap: "arrow",
+      stroke: { strokeWidth, strokeStyle: "solid" },
+    });
+    const tip = mock.callsOf("moveTo").at(-1)?.args as number[];
+    const left = mock.callsOf("lineTo").at(-2)?.args as number[];
+    return Math.hypot(
+      (left[0] as number) - (tip[0] as number),
+      (left[1] as number) - (tip[1] as number),
+    );
+  }
+
+  it("太い線ほど破線の間隔を広く取る", () => {
+    expect(dashOf(8)[0] as number).toBeGreaterThan(dashOf(2)[0] as number);
+  });
+
+  it("太い線ほど矢印を大きくする", () => {
+    expect(arrowLengthOf(8)).toBeGreaterThan(arrowLengthOf(2));
+  });
+
+  it("細い線では矢印の大きさを変えない", () => {
+    expect(arrowLengthOf(1)).toBeCloseTo(arrowLengthOf(2), 10);
+  });
+
+  it("丸も太さに応じて大きくなる", () => {
+    function circleRadius(strokeWidth: number) {
+      const mock = createMockContext();
+      drawConnector(mock.ctx, straight, 1, {
+        endCap: "circle",
+        stroke: { strokeWidth, strokeStyle: "solid" },
+      });
+      return mock.callsOf("arc")[0]?.args[2] as number;
+    }
+    expect(circleRadius(8)).toBeGreaterThan(circleRadius(2));
+  });
+});

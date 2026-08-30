@@ -214,12 +214,32 @@ function arrowBasis(
     : { tip: path.points[0], previous: path.points[1] };
 }
 
-/** 端の印の大きさ（画面 px）。 */
+/** 端の印の最小の大きさ（画面 px）。細い線でも見える大きさを保つ。 */
 export const CAP_LENGTHS: Record<CapSize, number> = {
   small: 8,
   medium: 12,
   large: 18,
 };
+
+/**
+ * 端の印の大きさが線の太さの何倍あれば釣り合うか。
+ * 太い線に小さい矢印を付けると、線に埋もれて向きが読み取れない。
+ */
+const CAP_WIDTH_RATIOS: Record<CapSize, number> = {
+  small: 2.5,
+  medium: 4,
+  large: 6,
+};
+
+/**
+ * 端の印の大きさ（画面 px）を求める。
+ *
+ * 設定の小・中・大は下限として働き、線が太いときはそれに比例して大きくなる。
+ * こうすると細い線の見た目は変わらないまま、太い線でも釣り合いが取れる。
+ */
+export function capLength(size: CapSize, strokeWidth: number): number {
+  return Math.max(CAP_LENGTHS[size], strokeWidth * CAP_WIDTH_RATIOS[size]);
+}
 
 /** 矢羽根の開き角（ラジアン）。 */
 const ARROW_SPREAD = Math.PI / 7;

@@ -117,7 +117,7 @@ function drawShape(
   ctx.strokeStyle = SHAPE_COLORS.border;
   // 線の太さと間隔は画面上で一定に見せたいので拡大率で割る
   ctx.lineWidth = item.strokeWidth / scale;
-  ctx.setLineDash(dashPattern(item.strokeStyle, scale));
+  ctx.setLineDash(dashPattern(item.strokeStyle, item.strokeWidth, scale));
   ctx.stroke();
   ctx.setLineDash([]);
 

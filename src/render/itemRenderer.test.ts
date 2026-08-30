@@ -348,3 +348,50 @@ describe("drawItem: テキストの配置", () => {
     expect(mock.callsOf("fillText")[0]?.args[1]).toBe(200);
   });
 });
+
+describe("drawItem: 枠線の太さと破線", () => {
+  /** 指定した太さの図形を描いたときの破線パターン。 */
+  function dashOf(strokeWidth: number) {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({
+        id: "r",
+        shape: "rectangle",
+        x: 0,
+        y: 0,
+        strokeWidth,
+        strokeStyle: "dashed",
+      }),
+    );
+    return mock.callsOf("setLineDash")[0]?.args[0] as number[];
+  }
+
+  it("太い枠線ほど破線の間隔を広く取る", () => {
+    expect(dashOf(8)[0] as number).toBeGreaterThan(dashOf(2)[0] as number);
+  });
+
+  it("実線では破線パターンを空にする", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    );
+    expect(mock.callsOf("setLineDash")[0]?.args[0]).toEqual([]);
+  });
+
+  it("描き終えたら破線の設定を戻す", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({
+        id: "r",
+        shape: "rectangle",
+        x: 0,
+        y: 0,
+        strokeStyle: "dashed",
+      }),
+    );
+    expect(mock.callsOf("setLineDash").at(-1)?.args[0]).toEqual([]);
+  });
+});

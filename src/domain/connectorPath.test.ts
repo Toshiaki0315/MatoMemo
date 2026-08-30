@@ -3,6 +3,7 @@ import { createShape, createStickyNote, type Item } from "./board";
 import {
   CAP_LENGTHS,
   arrowHead,
+  capLength,
   connectorEnds,
   boundaryAnchor,
   connectorPath,
@@ -454,5 +455,36 @@ describe("arrowHead: 大きさ", () => {
   it("大きさの指定は小・中・大で異なる", () => {
     expect(CAP_LENGTHS.small).toBeLessThan(CAP_LENGTHS.medium);
     expect(CAP_LENGTHS.medium).toBeLessThan(CAP_LENGTHS.large);
+  });
+});
+
+describe("capLength", () => {
+  it("細い線では設定した大きさをそのまま使う", () => {
+    expect(capLength("small", 1)).toBe(CAP_LENGTHS.small);
+    expect(capLength("medium", 1)).toBe(CAP_LENGTHS.medium);
+    expect(capLength("large", 1)).toBe(CAP_LENGTHS.large);
+  });
+
+  it("既定の太さでも見た目は変わらない", () => {
+    expect(capLength("medium", 2)).toBe(CAP_LENGTHS.medium);
+  });
+
+  it("太い線では太さに応じて大きくする", () => {
+    expect(capLength("medium", 8)).toBeGreaterThan(CAP_LENGTHS.medium);
+  });
+
+  it("太さに比例して大きくなる", () => {
+    expect(capLength("medium", 16)).toBe(capLength("medium", 8) * 2);
+  });
+
+  it("同じ太さなら 小 < 中 < 大 の順になる", () => {
+    expect(capLength("small", 8)).toBeLessThan(capLength("medium", 8));
+    expect(capLength("medium", 8)).toBeLessThan(capLength("large", 8));
+  });
+
+  it("線より十分に大きく、向きが読み取れる", () => {
+    for (const width of [1, 2, 3, 5, 8]) {
+      expect(capLength("medium", width)).toBeGreaterThanOrEqual(width * 2);
+    }
   });
 });
