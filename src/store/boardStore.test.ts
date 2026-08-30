@@ -859,22 +859,47 @@ describe("コネクタの矢印", () => {
   it("既定では矢印なしで作る", () => {
     const { store, a, b } = setupConnected();
     store.getState().connectItems(a, b, "straight");
-    expect(store.getState().board.connectors[0]?.arrow).toBe(false);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: false,
+      arrowEnd: false,
+    });
   });
 
-  it("矢印付きで作れる", () => {
+  it("両端の矢印を指定して作れる", () => {
     const { store, a, b } = setupConnected();
-    store.getState().connectItems(a, b, "straight", true);
-    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+    store.getState().connectItems(a, b, "straight", { start: true, end: true });
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: true,
+      arrowEnd: true,
+    });
   });
 
-  it("後から切り替えられる", () => {
+  it("片方だけ指定できる", () => {
+    const { store, a, b } = setupConnected();
+    store.getState().connectItems(a, b, "straight", { end: true });
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: false,
+      arrowEnd: true,
+    });
+  });
+
+  it("終点の矢印を後から切り替えられる", () => {
     const { store, a, b } = setupConnected();
     const id = store.getState().connectItems(a, b, "straight") as string;
-    store.getState().toggleConnectorArrow(id);
-    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
-    store.getState().toggleConnectorArrow(id);
-    expect(store.getState().board.connectors[0]?.arrow).toBe(false);
+    store.getState().toggleConnectorArrow(id, "to");
+    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(true);
+    store.getState().toggleConnectorArrow(id, "to");
+    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(false);
+  });
+
+  it("始点の矢印も切り替えられる", () => {
+    const { store, a, b } = setupConnected();
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().toggleConnectorArrow(id, "from");
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: true,
+      arrowEnd: false,
+    });
   });
 
   it("他のコネクタには影響しない", () => {
@@ -882,16 +907,16 @@ describe("コネクタの矢印", () => {
     const c = addSticky(store, 600, 0);
     const first = store.getState().connectItems(a, b, "straight") as string;
     store.getState().connectItems(b, c, "straight");
-    store.getState().toggleConnectorArrow(first);
-    expect(store.getState().board.connectors[1]?.arrow).toBe(false);
+    store.getState().toggleConnectorArrow(first, "to");
+    expect(store.getState().board.connectors[1]?.arrowEnd).toBe(false);
   });
 
   it("切り替えは取り消せる", () => {
     const { store, a, b } = setupConnected();
     const id = store.getState().connectItems(a, b, "straight") as string;
-    store.getState().toggleConnectorArrow(id);
+    store.getState().toggleConnectorArrow(id, "to");
     store.getState().undo();
-    expect(store.getState().board.connectors[0]?.arrow).toBe(false);
+    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(false);
   });
 });
 
@@ -1061,7 +1086,7 @@ describe("コネクタの更新が他に影響しないこと", () => {
     const before = store
       .getState()
       .board.connectors.find((connector) => connector.id === second);
-    store.getState().toggleConnectorArrow(first);
+    store.getState().toggleConnectorArrow(first, "to");
     expect(
       store.getState().board.connectors.find((connector) => connector.id === second),
     ).toBe(before);

@@ -46,12 +46,23 @@ export function ConnectorPropertiesPanel({
       <label>
         <input
           type="checkbox"
-          checked={connector.arrow}
+          checked={connector.arrowStart}
           onChange={(event) =>
-            onChange({ ...connector, arrow: event.target.checked })
+            onChange({ ...connector, arrowStart: event.target.checked })
           }
         />
-        矢印
+        始点の矢印
+      </label>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={connector.arrowEnd}
+          onChange={(event) =>
+            onChange({ ...connector, arrowEnd: event.target.checked })
+          }
+        />
+        終点の矢印
       </label>
 
       <button type="button" onClick={onDelete}>

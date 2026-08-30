@@ -3,6 +3,7 @@ import { createShape, createStickyNote, type Item } from "./board";
 import {
   ARROW_LENGTH,
   arrowHead,
+  connectorEnds,
   boundaryAnchor,
   connectorPath,
   sideAnchor,
@@ -333,6 +334,100 @@ describe("arrowHead", () => {
           { x: 10, y: 10 },
         ],
       }),
+    ).toBeNull();
+  });
+});
+
+describe("connectorEnds", () => {
+  it("折れ線の両端を返す", () => {
+    expect(
+      connectorEnds({
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 100, y: 100 },
+        ],
+      }),
+    ).toEqual([
+      { end: "from", point: { x: 0, y: 0 } },
+      { end: "to", point: { x: 100, y: 100 } },
+    ]);
+  });
+
+  it("曲線の両端を返す", () => {
+    expect(
+      connectorEnds({
+        kind: "curve",
+        from: { x: 0, y: 0 },
+        control1: { x: 40, y: 0 },
+        control2: { x: 60, y: 100 },
+        to: { x: 100, y: 100 },
+      }),
+    ).toEqual([
+      { end: "from", point: { x: 0, y: 0 } },
+      { end: "to", point: { x: 100, y: 100 } },
+    ]);
+  });
+
+  it("点が無ければ空を返す", () => {
+    expect(connectorEnds({ kind: "polyline", points: [] })).toEqual([]);
+  });
+});
+
+describe("arrowHead: 始点側", () => {
+  it("始点を頂点にする", () => {
+    const head = arrowHead(
+      {
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+        ],
+      },
+      "from",
+    );
+    expect(head?.tip).toEqual({ x: 0, y: 0 });
+    // 左向きなので矢羽根は始点より右へ開く
+    expect(head?.left.x).toBeGreaterThan(0);
+    expect(head?.right.x).toBeGreaterThan(0);
+  });
+
+  it("折れ線では最初の区間の向きに合わせる", () => {
+    const head = arrowHead(
+      {
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 100 },
+          { x: 100, y: 100 },
+        ],
+      },
+      "from",
+    );
+    // 最初の区間は下向きなので矢羽根は始点より下へ開く
+    expect(head?.left.y).toBeGreaterThan(0);
+    expect(head?.right.y).toBeGreaterThan(0);
+  });
+
+  it("曲線では始点側の制御点との向きに合わせる", () => {
+    const head = arrowHead(
+      {
+        kind: "curve",
+        from: { x: 0, y: 0 },
+        control1: { x: 40, y: 0 },
+        control2: { x: 60, y: 100 },
+        to: { x: 100, y: 100 },
+      },
+      "from",
+    );
+    expect(head?.tip).toEqual({ x: 0, y: 0 });
+    expect(head?.left.x).toBeGreaterThan(0);
+  });
+
+  it("点が足りなければ作らない", () => {
+    expect(
+      arrowHead({ kind: "polyline", points: [{ x: 0, y: 0 }] }, "from"),
     ).toBeNull();
   });
 });

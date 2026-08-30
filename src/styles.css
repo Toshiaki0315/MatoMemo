@@ -166,7 +166,14 @@ body,
   position: absolute;
   display: flex;
   justify-content: center;
+  /* 編集中であることが空のままでも分かるよう枠を出す */
+  border: 2px solid var(--toolbar-active);
+  border-radius: 6px;
   pointer-events: auto;
+}
+
+.item-text-editor textarea::placeholder {
+  color: rgba(43, 43, 43, 0.35);
 }
 
 .item-text-editor textarea {
@@ -181,10 +188,6 @@ body,
 }
 
 .text-properties {
-  position: absolute;
-  left: 16px;
-  /* ファイルバーの下に置く */
-  top: 64px;
   display: flex;
   gap: 12px;
   padding: 8px 12px;
@@ -317,15 +320,31 @@ body,
   white-space: nowrap;
 }
 
-.file-bar {
+/*
+ * 左上に出すものは縦に積む。絶対配置で個別に置くと、内容が増えたときに
+ * 重なってしまうため。
+ */
+.top-left-panels {
   position: absolute;
   left: 16px;
   top: 16px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* ズーム表示と重ならないところまでに収める */
+  max-width: calc(100% - 180px);
+  pointer-events: none;
+}
+
+.top-left-panels > * {
+  pointer-events: auto;
+}
+
+.file-bar {
+  display: flex;
   align-items: center;
   gap: 6px;
-  /* ズーム表示と重ならないところまでに収め、収まらなければ折り返す */
-  max-width: calc(100% - 180px);
   flex-wrap: wrap;
   padding: 6px 8px;
   border: 1px solid var(--toolbar-border);
@@ -445,9 +464,6 @@ body,
 }
 
 .connector-properties {
-  position: absolute;
-  left: 16px;
-  top: 64px;
   display: flex;
   align-items: center;
   gap: 12px;

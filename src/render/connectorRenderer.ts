@@ -2,8 +2,12 @@
  * コネクタ（アイテム同士を結ぶ線）の描画。
  */
 
-import { arrowHead, type ConnectorPath } from "../domain/connectorPath";
-import { HANDLE_SIZE } from "../domain/resize";
+import {
+  arrowHead,
+  connectorEnds,
+  type ConnectorPath,
+} from "../domain/connectorPath";
+import { CONNECTOR_HANDLE_SIZE } from "../domain/connectorHitTest";
 import type { Point } from "../domain/geometry";
 import { SELECTION_COLOR } from "./palette";
 
@@ -18,8 +22,10 @@ const CORNER_RADIUS = 8;
 
 export interface DrawConnectorOptions {
   readonly selected?: boolean;
+  /** 始点に矢印を描くか。 */
+  readonly arrowStart?: boolean;
   /** 終点に矢印を描くか。 */
-  readonly arrow?: boolean;
+  readonly arrowEnd?: boolean;
 }
 
 /** コネクタ 1 本を描く。 */
@@ -50,17 +56,21 @@ export function drawConnector(
   }
   ctx.stroke();
 
-  if (options.arrow === true) {
-    drawArrowHead(ctx, path);
+  if (options.arrowStart === true) {
+    drawArrowHead(ctx, path, "from");
+  }
+  if (options.arrowEnd === true) {
+    drawArrowHead(ctx, path, "to");
   }
 }
 
-/** 終点に矢羽根を描く。線と同じ色で塗りつぶす。 */
+/** 指定した端に矢羽根を描く。線と同じ色で塗りつぶす。 */
 function drawArrowHead(
   ctx: CanvasRenderingContext2D,
   path: ConnectorPath,
+  end: "from" | "to",
 ): void {
-  const head = arrowHead(path);
+  const head = arrowHead(path, end);
   if (head === null) {
     return;
   }
@@ -109,36 +119,6 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-/** コネクタの端点。 */
-export interface ConnectorEnd {
-  /** 始点か終点か。 */
-  readonly end: "from" | "to";
-  readonly point: Point;
-}
-
-/**
- * 経路から両端の点を取り出す。
- *
- * 点が無い経路では空を返す。null ではなく空配列にすることで、
- * 呼び出し側が「無い場合」の分岐を書かずに済む。
- */
-export function connectorEnds(path: ConnectorPath): readonly ConnectorEnd[] {
-  if (path.kind === "curve") {
-    return [
-      { end: "from", point: path.from },
-      { end: "to", point: path.to },
-    ];
-  }
-  const from = path.points[0];
-  const to = path.points.at(-1);
-  return from === undefined || to === undefined
-    ? []
-    : [
-        { end: "from", point: from },
-        { end: "to", point: to },
-      ];
-}
-
 /**
  * 選択中のコネクタの端点にハンドルを描く。
  * ここを掴んで別のアイテムへ運ぶと接続先を付け替えられる。
@@ -148,7 +128,7 @@ export function drawConnectorHandles(
   path: ConnectorPath,
   scale: number,
 ): void {
-  const radius = HANDLE_SIZE / scale / 2;
+  const radius = CONNECTOR_HANDLE_SIZE / scale / 2;
 
   ctx.fillStyle = "#FFFFFF";
   ctx.strokeStyle = SELECTION_COLOR;

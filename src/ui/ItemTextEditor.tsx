@@ -89,6 +89,9 @@ export function ItemTextEditor({
       <textarea
         ref={setTextarea}
         aria-label="アイテムのテキスト"
+        // 空のときはカーソルだけでは編集中と分かりにくいので、
+        // 打ち込む場所であることを言葉でも示す
+        placeholder="入力"
         value={item.text}
         onChange={(event) => onChangeText(event.target.value)}
         onBlur={onClose}

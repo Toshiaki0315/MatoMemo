@@ -119,8 +119,10 @@ export interface Connector {
   readonly kind: ConnectorKind;
   readonly fromItemId: ItemId;
   readonly toItemId: ItemId;
-  /** 終点に矢印を描くか。向きを示したいときに使う。 */
-  readonly arrow: boolean;
+  /** 始点に矢印を描くか。 */
+  readonly arrowStart: boolean;
+  /** 終点に矢印を描くか。 */
+  readonly arrowEnd: boolean;
 }
 
 /** ホワイトボード 1 枚分の状態。 */
@@ -291,13 +293,15 @@ export function createConnector(params: {
   readonly fromItemId: ItemId;
   readonly toItemId: ItemId;
   readonly kind?: ConnectorKind;
-  readonly arrow?: boolean;
+  readonly arrowStart?: boolean;
+  readonly arrowEnd?: boolean;
 }): Connector {
   return {
     id: params.id,
     kind: params.kind ?? "straight",
     fromItemId: params.fromItemId,
     toItemId: params.toItemId,
-    arrow: params.arrow ?? false,
+    arrowStart: params.arrowStart ?? false,
+    arrowEnd: params.arrowEnd ?? false,
   };
 }

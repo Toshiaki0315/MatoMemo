@@ -115,10 +115,10 @@ export interface BoardState {
     fromItemId: ItemId,
     toItemId: ItemId,
     kind: ConnectorKind,
-    arrow?: boolean,
+    arrows?: { readonly start?: boolean; readonly end?: boolean },
   ): ConnectorId | null;
-  /** 既存のコネクタの矢印の有無を切り替える。 */
-  toggleConnectorArrow(id: ConnectorId): void;
+  /** 既存のコネクタの指定した端の矢印を切り替える。 */
+  toggleConnectorArrow(id: ConnectorId, end: "from" | "to"): void;
   /** コネクタの設定を差し替える。 */
   replaceConnector(connector: Connector): void;
   /** コネクタの接続先を付け替える。 */
@@ -385,7 +385,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      connectItems(fromItemId, toItemId, kind, arrow = false) {
+      connectItems(fromItemId, toItemId, kind, arrows = {}) {
         // 自分自身への接続は線として描けないため作らない
         if (fromItemId === toItemId) {
           return null;
@@ -407,7 +407,14 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
             state,
             addConnectorToBoard(
               state.board,
-              createConnector({ id, fromItemId, toItemId, kind, arrow }),
+              createConnector({
+                id,
+                fromItemId,
+                toItemId,
+                kind,
+                arrowStart: arrows.start ?? false,
+                arrowEnd: arrows.end ?? false,
+              }),
             ),
           ),
         );
@@ -473,13 +480,16 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      toggleConnectorArrow(id) {
+      toggleConnectorArrow(id, end) {
         set((state) => {
-          const connectors = state.board.connectors.map((connector) =>
-            connector.id === id
-              ? { ...connector, arrow: !connector.arrow }
-              : connector,
-          );
+          const connectors = state.board.connectors.map((connector) => {
+            if (connector.id !== id) {
+              return connector;
+            }
+            return end === "from"
+              ? { ...connector, arrowStart: !connector.arrowStart }
+              : { ...connector, arrowEnd: !connector.arrowEnd };
+          });
           return withBoard(state, { ...state.board, connectors });
         });
       },

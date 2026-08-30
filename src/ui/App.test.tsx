@@ -793,13 +793,16 @@ describe("App: コネクタ", () => {
   it("矢印付きの線を引ける", () => {
     renderApp();
     addTwoStickies();
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "新しい線に矢印を付ける" }),
-    );
+    fireEvent.change(screen.getByLabelText("矢印"), {
+      target: { value: "both" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: true,
+      arrowEnd: true,
+    });
   });
 
   it("メニューから矢印を切り替えられる", () => {
@@ -815,8 +818,32 @@ describe("App: コネクタ", () => {
       clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
       clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
     });
-    fireEvent.click(screen.getByRole("menuitem", { name: "矢印を切り替え" }));
-    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "終点の矢印を切り替え" }),
+    );
+    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(true);
+  });
+
+  it("メニューから始点の矢印も切り替えられる", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    const [first, second] = store.getState().board.items;
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    });
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "始点の矢印を切り替え" }),
+    );
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      arrowStart: true,
+      arrowEnd: false,
+    });
   });
 
   it("線を右クリックすると削除メニューが出る", () => {
@@ -1118,8 +1145,8 @@ describe("App: 線の選択と編集", () => {
     renderApp();
     setupConnected();
     clickConnector();
-    fireEvent.click(screen.getByRole("checkbox", { name: "矢印" }));
-    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "終点の矢印" }));
+    expect(store.getState().board.connectors[0]?.arrowEnd).toBe(true);
   });
 
   it("パネルから線を削除できる", () => {

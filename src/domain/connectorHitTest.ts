@@ -5,12 +5,21 @@
  * 曲線もベジェを細かく分割した折れ線として同じ計算で扱う。
  */
 
-import { connectorPath } from "./connectorPath";
-import type { Board, Connector, Item } from "./board";
+import { connectorEnds, connectorPath } from "./connectorPath";
+import type { Board, Connector, ConnectorId, Item } from "./board";
 import type { Point } from "./geometry";
 
 /** 線を掴めるとみなす画面上の距離 (px)。 */
 export const CONNECTOR_HIT_TOLERANCE = 8;
+
+/**
+ * 端点ハンドルの直径 (画面 px)。
+ * アイテムの縁に重なるため、アイテム本体と間違えずに掴める大きさが要る。
+ */
+export const CONNECTOR_HANDLE_SIZE = 12;
+
+/** 端点を掴めるとみなす画面上の半径 (px)。見た目より広めに取る。 */
+export const CONNECTOR_HANDLE_HIT_RADIUS = 12;
 
 /** 曲線を折れ線に近似するときの分割数。 */
 const CURVE_SEGMENTS = 24;
@@ -121,4 +130,47 @@ function isNearPolyline(
     previous = current;
   }
   return false;
+}
+
+/** 掴んだ端点。 */
+export interface GrabbedConnectorEnd {
+  readonly id: ConnectorId;
+  readonly end: "from" | "to";
+}
+
+/**
+ * 指定したコネクタの端点を掴んだかを判定する。
+ *
+ * @param scale 表示倍率。掴める範囲は画面上で一定にしたいので換算する
+ */
+export function hitTestConnectorEnd(
+  board: Board,
+  connectorId: ConnectorId | undefined,
+  point: Point,
+  scale: number,
+): GrabbedConnectorEnd | null {
+  if (connectorId === undefined) {
+    return null;
+  }
+  const connector = board.connectors.find(
+    (candidate) => candidate.id === connectorId,
+  );
+  if (connector === undefined) {
+    return null;
+  }
+  const byId = new Map(board.items.map((item) => [item.id, item]));
+  const fromItem = byId.get(connector.fromItemId);
+  const toItem = byId.get(connector.toItemId);
+  if (fromItem === undefined || toItem === undefined) {
+    return null;
+  }
+
+  const reach = CONNECTOR_HANDLE_HIT_RADIUS / scale;
+  const path = connectorPath(connector.kind, fromItem, toItem);
+  for (const { end, point: endPoint } of connectorEnds(path)) {
+    if (Math.hypot(point.x - endPoint.x, point.y - endPoint.y) <= reach) {
+      return { id: connector.id, end };
+    }
+  }
+  return null;
 }

@@ -1284,3 +1284,30 @@ describe("BoardCanvas: 線の接続先の付け替え", () => {
     expect(onEndInteraction).toHaveBeenCalled();
   });
 });
+
+describe("BoardCanvas: 端点のカーソル", () => {
+  it("選択中の線の端点の上では move にする", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithConnector(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
+    expect(canvas.style.cursor).toBe("move");
+  });
+
+  it("端点から離れると通常のカーソルに戻る", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithConnector(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(canvas, { clientX: 200, clientY: 200 });
+    expect(canvas.style.cursor).toBe("grab");
+  });
+
+  it("線を選択していなければ端点の位置でも変わらない", () => {
+    const { canvas } = renderCanvas({ board: boardWithConnector() });
+    fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
+    expect(canvas.style.cursor).toBe("grab");
+  });
+});

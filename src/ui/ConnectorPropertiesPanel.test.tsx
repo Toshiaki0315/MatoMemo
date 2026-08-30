@@ -17,7 +17,8 @@ function renderPanel(
   );
   return {
     kindSelect: screen.getByLabelText("種類") as HTMLSelectElement,
-    arrowCheckbox: screen.getByRole("checkbox", { name: "矢印" }),
+    startArrow: screen.getByRole("checkbox", { name: "始点の矢印" }),
+    endArrow: screen.getByRole("checkbox", { name: "終点の矢印" }),
     onChange,
     onDelete,
   };
@@ -37,26 +38,37 @@ describe("ConnectorPropertiesPanel", () => {
   });
 
   it("矢印なしの状態を反映する", () => {
-    expect(renderPanel().arrowCheckbox).not.toBeChecked();
+    const { startArrow, endArrow } = renderPanel();
+    expect(startArrow).not.toBeChecked();
+    expect(endArrow).not.toBeChecked();
   });
 
-  it("矢印ありの状態を反映する", () => {
-    const { arrowCheckbox } = renderPanel(
+  it("両端の矢印の状態を別々に反映する", () => {
+    const { startArrow, endArrow } = renderPanel(
       createConnector({
         id: "c1",
         fromItemId: "a",
         toItemId: "b",
-        arrow: true,
+        arrowStart: true,
       }),
     );
-    expect(arrowCheckbox).toBeChecked();
+    expect(startArrow).toBeChecked();
+    expect(endArrow).not.toBeChecked();
   });
 
-  it("矢印を切り替えると通知する", () => {
-    const { arrowCheckbox, onChange } = renderPanel();
-    fireEvent.click(arrowCheckbox);
+  it("始点の矢印を切り替えると通知する", () => {
+    const { startArrow, onChange } = renderPanel();
+    fireEvent.click(startArrow);
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ arrow: true }),
+      expect.objectContaining({ arrowStart: true, arrowEnd: false }),
+    );
+  });
+
+  it("終点の矢印を切り替えると通知する", () => {
+    const { endArrow, onChange } = renderPanel();
+    fireEvent.click(endArrow);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ arrowStart: false, arrowEnd: true }),
     );
   });
 

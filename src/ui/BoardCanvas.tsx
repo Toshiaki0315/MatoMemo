@@ -8,17 +8,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
 import type { Rect } from "../domain/geometry";
-import { hitTestConnector } from "../domain/connectorHitTest";
-import { connectorPath } from "../domain/connectorPath";
+import {
+  hitTestConnector,
+  hitTestConnectorEnd,
+} from "../domain/connectorHitTest";
 import { rectFromCorners, type Point } from "../domain/geometry";
 import { hitTest, itemsWithinRect } from "../domain/hitTest";
 import {
   cursorForHandle,
-  HANDLE_HIT_SIZE,
   hitTestHandle,
   type ResizeHandle,
 } from "../domain/resize";
-import { connectorEnds } from "../render/connectorRenderer";
 import { panBy, toWorld, zoomAt, type Viewport } from "../domain/viewport";
 import { renderBoard, type CanvasTheme } from "../render/boardRenderer";
 import type { ImageCache } from "../render/itemRenderer";
@@ -150,6 +150,8 @@ export function BoardCanvas({
   const [isPanning, setIsPanning] = useState(false);
   /** ポインタの下にあるハンドル。カーソルの見た目に使う。 */
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
+  /** ポインタが線の端点の上にあるか。掴めることをカーソルで示す。 */
+  const [hoveringConnectorEnd, setHoveringConnectorEnd] = useState(false);
   /** 範囲ドラッグ中の選択範囲（ワールド座標）。 */
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
   /** Space が押されているか。押している間はドラッグがパンになる。 */
@@ -340,7 +342,7 @@ export function BoardCanvas({
 
       // 選択中の線の端点は、アイテムより先に判定する。
       // 端点はアイテムの縁に重なっているため。
-      const grabbed = grabConnectorEnd(
+      const grabbed = hitTestConnectorEnd(
         board,
         // props は latest ref から読む。effect は canvas の登場時に一度だけ
         // 実行されるので、クロージャの値は初回のまま古くなる。
@@ -459,14 +461,21 @@ export function BoardCanvas({
       if (drag.current !== null) {
         return;
       }
-      const { board, viewport, selectedIds } = latest.current;
-      const target = findResizeTarget(board.items, selectedIds);
-      if (target === undefined) {
-        setHoveredHandle(null);
-        return;
-      }
+      const { board, viewport, selectedIds, selectedConnectorId } =
+        latest.current;
       const world = toWorld(viewport, toCanvasPoint(event));
-      setHoveredHandle(hitTestHandle(target, world, viewport.scale) ?? null);
+
+      setHoveringConnectorEnd(
+        hitTestConnectorEnd(board, selectedConnectorId, world, viewport.scale) !==
+          null,
+      );
+
+      const target = findResizeTarget(board.items, selectedIds);
+      setHoveredHandle(
+        target === undefined
+          ? null
+          : (hitTestHandle(target, world, viewport.scale) ?? null),
+      );
     };
 
     const handleContextMenu = (event: MouseEvent) => {
@@ -588,44 +597,16 @@ export function BoardCanvas({
       ref={setCanvas}
       data-testid="board-canvas"
       className="board-canvas"
-      style={{ cursor: currentCursor(isPanning, hoveredHandle, connectMode) }}
+      style={{
+        cursor: currentCursor(
+          isPanning,
+          hoveredHandle,
+          connectMode,
+          hoveringConnectorEnd,
+        ),
+      }}
     />
   );
-}
-
-/**
- * 選択中のコネクタの端点を掴んだかを判定する。
- * 掴んでいればどちらの端かを返す。
- */
-function grabConnectorEnd(
-  board: Board,
-  selectedConnectorId: ConnectorId | undefined,
-  world: Point,
-  scale: number,
-): { id: ConnectorId; end: "from" | "to" } | null {
-  if (selectedConnectorId === undefined) {
-    return null;
-  }
-  const connector = board.connectors.find(
-    (candidate) => candidate.id === selectedConnectorId,
-  );
-  if (connector === undefined) {
-    return null;
-  }
-  const byId = new Map(board.items.map((item) => [item.id, item]));
-  const fromItem = byId.get(connector.fromItemId);
-  const toItem = byId.get(connector.toItemId);
-  if (fromItem === undefined || toItem === undefined) {
-    return null;
-  }
-  const reach = HANDLE_HIT_SIZE / scale / 2;
-  const path = connectorPath(connector.kind, fromItem, toItem);
-  for (const { end, point } of connectorEnds(path)) {
-    if (Math.hypot(world.x - point.x, world.y - point.y) <= reach) {
-      return { id: connector.id, end };
-    }
-  }
-  return null;
 }
 
 /** 1 件だけ選択しているアイテムを返す。リサイズの対象。 */
@@ -644,9 +625,14 @@ function currentCursor(
   isPanning: boolean,
   hoveredHandle: ResizeHandle | null,
   connectMode: boolean,
+  hoveringConnectorEnd: boolean,
 ): string {
   if (connectMode) {
     return "crosshair";
+  }
+  // 線の端点はアイテムの縁に重なるので、掴めることをカーソルで示す
+  if (hoveringConnectorEnd) {
+    return "move";
   }
   if (hoveredHandle !== null) {
     return cursorForHandle(hoveredHandle);

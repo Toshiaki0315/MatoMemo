@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createBoard, createConnector, createStickyNote } from "./board";
 import { addConnector, addItem } from "./boardOps";
 import {
+  CONNECTOR_HANDLE_HIT_RADIUS,
   CONNECTOR_HIT_TOLERANCE,
   connectorPolyline,
   distanceToSegment,
   hitTestConnector,
+  hitTestConnectorEnd,
 } from "./connectorHitTest";
 import type { ConnectorKind } from "./board";
 
@@ -139,5 +141,87 @@ describe("hitTestConnector", () => {
       createConnector({ id: "c2", fromItemId: "a", toItemId: "b" }),
     );
     expect(hitTestConnector(board, { x: 200, y: 50 }, 1)?.id).toBe("c2");
+  });
+});
+
+describe("hitTestConnectorEnd", () => {
+  /** 付箋 2 枚（0〜100 と 300〜400）を結んだボード。端点は (100,50) と (300,50)。 */
+  const board = boardWithConnector();
+  const id = "c1";
+
+  it("始点の上で掴める", () => {
+    expect(hitTestConnectorEnd(board, id, { x: 100, y: 50 }, 1)).toEqual({
+      id,
+      end: "from",
+    });
+  });
+
+  it("終点の上で掴める", () => {
+    expect(hitTestConnectorEnd(board, id, { x: 300, y: 50 }, 1)).toEqual({
+      id,
+      end: "to",
+    });
+  });
+
+  it("少し離れていても掴める", () => {
+    expect(
+      hitTestConnectorEnd(
+        board,
+        id,
+        { x: 300, y: 50 + CONNECTOR_HANDLE_HIT_RADIUS - 1 },
+        1,
+      ),
+    ).toMatchObject({ end: "to" });
+  });
+
+  it("範囲を超えると掴めない", () => {
+    expect(
+      hitTestConnectorEnd(
+        board,
+        id,
+        { x: 300, y: 50 + CONNECTOR_HANDLE_HIT_RADIUS + 1 },
+        1,
+      ),
+    ).toBeNull();
+  });
+
+  it("線の途中では掴めない", () => {
+    expect(hitTestConnectorEnd(board, id, { x: 200, y: 50 }, 1)).toBeNull();
+  });
+
+  it("拡大時は掴める範囲がワールド座標では狭くなる", () => {
+    const point = { x: 300, y: 58 };
+    expect(hitTestConnectorEnd(board, id, point, 1)).not.toBeNull();
+    expect(hitTestConnectorEnd(board, id, point, 4)).toBeNull();
+  });
+
+  it("コネクタを指定しなければ掴めない", () => {
+    expect(
+      hitTestConnectorEnd(board, undefined, { x: 100, y: 50 }, 1),
+    ).toBeNull();
+  });
+
+  it("存在しないコネクタでは掴めない", () => {
+    expect(hitTestConnectorEnd(board, "zzz", { x: 100, y: 50 }, 1)).toBeNull();
+  });
+
+  it("接続先が失われたコネクタでは掴めない", () => {
+    let broken = createBoard({ id: "b" });
+    broken = addItem(
+      broken,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    broken = addConnector(
+      broken,
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "missing" }),
+    );
+    expect(hitTestConnectorEnd(broken, "c1", { x: 50, y: 50 }, 1)).toBeNull();
+  });
+
+  it("曲線の端点も掴める", () => {
+    const curved = boardWithConnector("curved");
+    expect(hitTestConnectorEnd(curved, id, { x: 100, y: 50 }, 1)).toMatchObject({
+      end: "from",
+    });
   });
 });

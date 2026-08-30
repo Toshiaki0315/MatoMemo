@@ -261,8 +261,13 @@ function parseConnector(
     ),
     fromItemId: readId(raw, "fromItemId", path, issues),
     toItemId: readId(raw, "toItemId", path, issues),
-    // 矢印は後から加えた項目なので、無い場合は矢印なしとして読む
-    arrow: readOptionalBoolean(raw, "arrow", path, issues),
+    arrowStart: readOptionalBoolean(raw, "arrowStart", path, issues),
+    // 以前は終点の矢印だけを arrow で持っていた。古いファイルはその値を
+    // 終点の矢印として読む。
+    arrowEnd:
+      raw["arrowEnd"] === undefined
+        ? readOptionalBoolean(raw, "arrow", path, issues)
+        : readOptionalBoolean(raw, "arrowEnd", path, issues),
   };
 }
 

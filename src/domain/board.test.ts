@@ -223,7 +223,8 @@ describe("createConnector", () => {
         kind: "straight",
         fromItemId: "a",
         toItemId: "b",
-        arrow: false,
+        arrowStart: false,
+        arrowEnd: false,
       },
     );
   });
@@ -239,15 +240,23 @@ describe("createConnector", () => {
     ).toBe("curved");
   });
 
-  it("矢印の有無を指定できる", () => {
+  it("両端の矢印を別々に指定できる", () => {
     expect(
       createConnector({
         id: "c1",
         fromItemId: "a",
         toItemId: "b",
-        arrow: true,
-      }).arrow,
-    ).toBe(true);
+        arrowStart: true,
+      }),
+    ).toMatchObject({ arrowStart: true, arrowEnd: false });
+    expect(
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        arrowEnd: true,
+      }),
+    ).toMatchObject({ arrowStart: false, arrowEnd: true });
   });
 });
 

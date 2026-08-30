@@ -39,7 +39,7 @@ import { ContextMenu } from "./ContextMenu";
 import { FileBar } from "./FileBar";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
-import { Toolbar } from "./Toolbar";
+import { Toolbar, type ConnectorArrows } from "./Toolbar";
 import { useImageCache } from "./useImageCache";
 
 /** ズームボタン 1 回あたりの倍率。 */
@@ -145,8 +145,9 @@ export function App({
   const [connectingFrom, setConnectingFrom] = useState<ItemId | null>(null);
   /** これから引くコネクタの種類。 */
   const [connectorKind, setConnectorKind] = useState<ConnectorKind>("straight");
-  /** これから引くコネクタに矢印を付けるか。 */
-  const [connectorArrow, setConnectorArrow] = useState(false);
+  /** これから引くコネクタに付ける矢印。 */
+  const [connectorArrows, setConnectorArrows] =
+    useState<ConnectorArrows>("none");
   /** ファイル操作の実行中か。 */
   const [busy, setBusy] = useState(false);
   /** 未保存の変更の確認待ちになっている操作。 */
@@ -377,11 +378,14 @@ export function App({
         setConnectingFrom(id);
         return;
       }
-      connectItems(connectingFrom, id, connectorKind, connectorArrow);
+      connectItems(connectingFrom, id, connectorKind, {
+        start: connectorArrows === "start" || connectorArrows === "both",
+        end: connectorArrows === "end" || connectorArrows === "both",
+      });
       // 続けて別の線を引けるよう、始点を空にしてモードは維持する
       setConnectingFrom(null);
     },
-    [connectItems, connectingFrom, connectorArrow, connectorKind],
+    [connectItems, connectingFrom, connectorArrows, connectorKind],
   );
 
   /**
@@ -509,17 +513,31 @@ export function App({
 
   return (
     <main className="app">
-      <FileBar
-        boardName={board.name}
-        onRename={renameBoard}
-        dirty={dirty}
-        onNew={() => requestAction("new")}
-        onOpen={() => requestAction("open")}
-        onSave={handleSave}
-        onSaveAs={handleSaveAs}
-        onExportMarkdown={handleExportMarkdown}
-        busy={busy}
-      />
+      <div className="top-left-panels">
+        <FileBar
+          boardName={board.name}
+          onRename={renameBoard}
+          dirty={dirty}
+          onNew={() => requestAction("new")}
+          onOpen={() => requestAction("open")}
+          onSave={handleSave}
+          onSaveAs={handleSaveAs}
+          onExportMarkdown={handleExportMarkdown}
+          busy={busy}
+        />
+
+        {selectedConnector === undefined ? null : (
+          <ConnectorPropertiesPanel
+            connector={selectedConnector}
+            onChange={replaceConnector}
+            onDelete={removeSelectedConnector}
+          />
+        )}
+
+        {isTextEditable(soleSelected) ? (
+          <TextPropertiesPanel item={soleSelected} onChange={replaceItem} />
+        ) : null}
+      </div>
 
       <BoardCanvas
         board={board}
@@ -554,18 +572,6 @@ export function App({
         />
       ) : null}
 
-      {selectedConnector === undefined ? null : (
-        <ConnectorPropertiesPanel
-          connector={selectedConnector}
-          onChange={replaceConnector}
-          onDelete={removeSelectedConnector}
-        />
-      )}
-
-      {isTextEditable(soleSelected) ? (
-        <TextPropertiesPanel item={soleSelected} onChange={replaceItem} />
-      ) : null}
-
       <Toolbar
         onAddSticky={handleAddSticky}
         onAddShape={handleAddShape}
@@ -577,8 +583,8 @@ export function App({
         onToggleConnectMode={toggleConnectMode}
         connectorKind={connectorKind}
         onChangeConnectorKind={setConnectorKind}
-        connectorArrow={connectorArrow}
-        onChangeConnectorArrow={setConnectorArrow}
+        connectorArrows={connectorArrows}
+        onChangeConnectorArrows={setConnectorArrows}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
@@ -593,8 +599,12 @@ export function App({
             menu.target.kind === "connector"
               ? [
                   {
-                    label: "矢印を切り替え",
-                    onSelect: () => toggleConnectorArrow(menu.target.id),
+                    label: "始点の矢印を切り替え",
+                    onSelect: () => toggleConnectorArrow(menu.target.id, "from"),
+                  },
+                  {
+                    label: "終点の矢印を切り替え",
+                    onSelect: () => toggleConnectorArrow(menu.target.id, "to"),
                   },
                   {
                     label: "線を削除",

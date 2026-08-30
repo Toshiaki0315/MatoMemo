@@ -24,13 +24,24 @@ export interface ToolbarProps {
   readonly onToggleConnectMode: () => void;
   readonly connectorKind: ConnectorKind;
   readonly onChangeConnectorKind: (kind: ConnectorKind) => void;
-  readonly connectorArrow: boolean;
-  readonly onChangeConnectorArrow: (arrow: boolean) => void;
+  readonly connectorArrows: ConnectorArrows;
+  readonly onChangeConnectorArrows: (arrows: ConnectorArrows) => void;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
 }
+
+/** 新しい線に付ける矢印の指定。 */
+export type ConnectorArrows = "none" | "end" | "start" | "both";
+
+/** 矢印の指定の表示名。 */
+const ARROW_LABELS: Record<ConnectorArrows, string> = {
+  none: "なし",
+  end: "終点",
+  start: "始点",
+  both: "両端",
+};
 
 /** コネクタの種類の表示名。 */
 const CONNECTOR_LABELS: Record<ConnectorKind, string> = {
@@ -60,8 +71,8 @@ export function Toolbar({
   onToggleConnectMode,
   connectorKind,
   onChangeConnectorKind,
-  connectorArrow,
-  onChangeConnectorArrow,
+  connectorArrows,
+  onChangeConnectorArrows,
   canUndo,
   canRedo,
   onUndo,
@@ -153,13 +164,20 @@ export function Toolbar({
           </select>
         </label>
         <label className="connector-arrow">
-          <input
-            type="checkbox"
-            aria-label="新しい線に矢印を付ける"
-            checked={connectorArrow}
-            onChange={(event) => onChangeConnectorArrow(event.target.checked)}
-          />
-          矢印
+          <span className="visually-hidden">矢印</span>
+          <select
+            aria-label="矢印"
+            value={connectorArrows}
+            onChange={(event) =>
+              onChangeConnectorArrows(event.target.value as ConnectorArrows)
+            }
+          >
+            {(Object.keys(ARROW_LABELS) as ConnectorArrows[]).map((value) => (
+              <option key={value} value={value}>
+                矢印: {ARROW_LABELS[value]}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

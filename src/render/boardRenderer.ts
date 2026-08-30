@@ -189,7 +189,8 @@ function drawConnectors(
     const selected = connector.id === options.selectedConnectorId;
     drawConnector(ctx, path, options.viewport.scale, {
       selected,
-      arrow: connector.arrow,
+      arrowStart: connector.arrowStart,
+      arrowEnd: connector.arrowEnd,
     });
     if (selected) {
       drawConnectorHandles(ctx, path, options.viewport.scale);

@@ -199,6 +199,21 @@ export function connectorPath(
   }
 }
 
+/** 矢羽根の向きを決める 2 点を返す。 */
+function arrowBasis(
+  path: ConnectorPath,
+  end: "from" | "to",
+): { tip: Point | undefined; previous: Point | undefined } {
+  if (path.kind === "curve") {
+    return end === "to"
+      ? { tip: path.to, previous: path.control2 }
+      : { tip: path.from, previous: path.control1 };
+  }
+  return end === "to"
+    ? { tip: path.points.at(-1), previous: path.points.at(-2) }
+    : { tip: path.points[0], previous: path.points[1] };
+}
+
 /** 矢羽根の長さ（ワールド座標）。 */
 export const ARROW_LENGTH = 12;
 
@@ -213,19 +228,16 @@ export interface ArrowHead {
 }
 
 /**
- * 終点に描く矢羽根の 3 点を返す。
+ * 指定した端に描く矢羽根の 3 点を返す。
  *
- * 向きは終点と、その手前の点（曲線ならベジェの制御点）から決める。
- * 経路の種類によらず「線が入ってくる向き」に矢印を合わせられる。
+ * 向きはその端と、隣の点（曲線ならベジェの制御点）から決める。
+ * 経路の種類によらず「線がその端へ向かう向き」に矢印を合わせられる。
  */
-export function arrowHead(path: ConnectorPath): ArrowHead | null {
-  const { tip, previous } =
-    path.kind === "curve"
-      ? { tip: path.to, previous: path.control2 }
-      : {
-          tip: path.points.at(-1),
-          previous: path.points.at(-2),
-        };
+export function arrowHead(
+  path: ConnectorPath,
+  end: "from" | "to" = "to",
+): ArrowHead | null {
+  const { tip, previous } = arrowBasis(path, end);
 
   if (tip === undefined || previous === undefined) {
     return null;
@@ -248,4 +260,34 @@ export function arrowHead(path: ConnectorPath): ArrowHead | null {
       y: tip.y - ARROW_LENGTH * Math.sin(angle + ARROW_SPREAD),
     },
   };
+}
+
+/** コネクタの端点。 */
+export interface ConnectorEnd {
+  /** 始点か終点か。 */
+  readonly end: "from" | "to";
+  readonly point: Point;
+}
+
+/**
+ * 経路から両端の点を取り出す。
+ *
+ * 点が無い経路では空を返す。null ではなく空配列にすることで、
+ * 呼び出し側が「無い場合」の分岐を書かずに済む。
+ */
+export function connectorEnds(path: ConnectorPath): readonly ConnectorEnd[] {
+  if (path.kind === "curve") {
+    return [
+      { end: "from", point: path.from },
+      { end: "to", point: path.to },
+    ];
+  }
+  const from = path.points[0];
+  const to = path.points.at(-1);
+  return from === undefined || to === undefined
+    ? []
+    : [
+        { end: "from", point: from },
+        { end: "to", point: to },
+      ];
 }
