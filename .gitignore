@@ -48,3 +48,6 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+
+# --- 開発指示書（ローカルのみ・公開しない） ---
+instruction.md
