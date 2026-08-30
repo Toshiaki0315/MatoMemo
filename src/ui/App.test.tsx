@@ -655,3 +655,159 @@ describe("App: リサイズ", () => {
     });
   });
 });
+
+describe("App: コネクタ", () => {
+  /** 離れた場所に付箋を 2 枚置く。 */
+  function addTwoStickies() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const first = store.getState().board.items[0];
+    fireEvent.click(screen.getByRole("button", { name: "青の付箋を追加" }));
+    // 2 枚目を真横に大きく離す。高さを揃えることで線が水平になり、
+    // 線の上の点をテストから簡単に指定できる。
+    act(() => {
+      const second = store.getState().board.items[1];
+      if (second !== undefined) {
+        store.getState().replaceItem({
+          ...second,
+          x: (first?.x ?? 0) + 400,
+          y: first?.y ?? 0,
+        });
+      }
+    });
+    return store.getState().board.items.map((item) => item.id);
+  }
+
+  /** アイテムの左上寄りをクリックする。 */
+  function clickItem(index: number) {
+    const item = store.getState().board.items[index];
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+  }
+
+  it("接続モードを切り替えられる", () => {
+    renderApp();
+    const button = screen.getByRole("button", { name: "接続" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("2 つのアイテムを順にクリックすると線がつながる", () => {
+    renderApp();
+    const ids = addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    expect(store.getState().board.connectors).toMatchObject([
+      { fromItemId: ids[0], toItemId: ids[1], kind: "straight" },
+    ]);
+  });
+
+  it("線の種類を選べる", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.change(screen.getByLabelText("線の種類"), {
+      target: { value: "curved" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    expect(store.getState().board.connectors[0]?.kind).toBe("curved");
+  });
+
+  it("折れ線も選べる", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.change(screen.getByLabelText("線の種類"), {
+      target: { value: "polyline" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    expect(store.getState().board.connectors[0]?.kind).toBe("polyline");
+  });
+
+  it("同じアイテムを 2 回クリックしても線はできない", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(0);
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("続けて別の線を引ける", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    act(() => {
+      const third = store.getState().board.items[2];
+      if (third !== undefined) {
+        store.getState().replaceItem({ ...third, x: 0, y: 0 });
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    clickItem(1);
+    clickItem(2);
+    expect(store.getState().board.connectors).toHaveLength(2);
+  });
+
+  it("接続モードを終えると選択が解除される", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    expect(store.getState().selectedIds.size).toBe(0);
+  });
+
+  it("アイテムを消すと繋がる線も消える", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("線を右クリックすると削除メニューが出る", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    const [first, second] = store.getState().board.items;
+    // 2 枚の付箋の間、線の高さ
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    });
+    expect(screen.getByRole("menuitem", { name: "線を削除" })).toBeInTheDocument();
+  });
+
+  it("メニューから線を削除できる", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    const [first, second] = store.getState().board.items;
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "線を削除" }));
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+});

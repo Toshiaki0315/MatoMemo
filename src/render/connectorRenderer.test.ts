@@ -1,0 +1,106 @@
+import { describe, expect, it } from "vitest";
+import type { ConnectorPath } from "../domain/connectorPath";
+import { createMockContext } from "../test/mockCanvas";
+import { CONNECTOR_COLOR, drawConnector } from "./connectorRenderer";
+import { SELECTION_COLOR } from "./palette";
+
+const straight: ConnectorPath = {
+  kind: "polyline",
+  points: [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+  ],
+};
+
+const elbow: ConnectorPath = {
+  kind: "polyline",
+  points: [
+    { x: 0, y: 0 },
+    { x: 50, y: 0 },
+    { x: 50, y: 100 },
+    { x: 100, y: 100 },
+  ],
+};
+
+const curve: ConnectorPath = {
+  kind: "curve",
+  from: { x: 0, y: 0 },
+  control1: { x: 40, y: 0 },
+  control2: { x: 60, y: 100 },
+  to: { x: 100, y: 100 },
+};
+
+describe("drawConnector: 直線", () => {
+  it("2 点を直線で結ぶ", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1);
+    expect(mock.callsOf("moveTo")[0]?.args).toEqual([0, 0]);
+    expect(mock.callsOf("lineTo")[0]?.args).toEqual([100, 0]);
+    expect(mock.callsOf("stroke")).toHaveLength(1);
+  });
+
+  it("既定の色で描く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1);
+    expect(mock.ctx.strokeStyle).toBe(CONNECTOR_COLOR);
+  });
+
+  it("選択中は選択色で描く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, { selected: true });
+    expect(mock.ctx.strokeStyle).toBe(SELECTION_COLOR);
+  });
+
+  it("拡大率に反比例した線幅にして見た目の太さを保つ", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 4);
+    expect(mock.ctx.lineWidth).toBe(0.5);
+  });
+
+  it("点が無ければ何も引かない", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, { kind: "polyline", points: [] }, 1);
+    expect(mock.callsOf("moveTo")).toHaveLength(0);
+    expect(mock.callsOf("lineTo")).toHaveLength(0);
+  });
+});
+
+describe("drawConnector: 折れ線", () => {
+  it("角を丸めて引く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, elbow, 1);
+    expect(mock.callsOf("moveTo")[0]?.args).toEqual([0, 0]);
+    // 中間の 2 点は arcTo で丸められ、最後の点だけ lineTo になる
+    expect(mock.callsOf("arcTo")).toHaveLength(2);
+    expect(mock.callsOf("lineTo")[0]?.args).toEqual([100, 100]);
+  });
+
+  it("短い区間では角の半径を小さくする", () => {
+    const mock = createMockContext();
+    drawConnector(
+      mock.ctx,
+      {
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 4, y: 0 },
+          { x: 4, y: 100 },
+        ],
+      },
+      1,
+    );
+    // 手前の区間が 4 なので半径は 2 に抑えられる
+    expect(mock.callsOf("arcTo")[0]?.args[4]).toBe(2);
+  });
+});
+
+describe("drawConnector: 曲線", () => {
+  it("3 次ベジェで引く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, curve, 1);
+    expect(mock.callsOf("moveTo")[0]?.args).toEqual([0, 0]);
+    expect(mock.callsOf("bezierCurveTo")[0]?.args).toEqual([
+      40, 0, 60, 100, 100, 100,
+    ]);
+  });
+});

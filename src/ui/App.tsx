@@ -5,6 +5,7 @@ import {
   createStickyNote,
   createText,
   type Item,
+  type ConnectorKind,
   type ItemId,
   type ShapeKind,
   type StickyColor,
@@ -19,7 +20,7 @@ import {
 } from "../domain/viewport";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
-import { BoardCanvas } from "./BoardCanvas";
+import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
 import { ContextMenu } from "./ContextMenu";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
@@ -65,6 +66,8 @@ export function App({
   const selectOnly = store((state) => state.selectOnly);
   const toggleSelection = store((state) => state.toggleSelection);
   const clearSelection = store((state) => state.clearSelection);
+  const connectItems = store((state) => state.connectItems);
+  const removeConnector = store((state) => state.removeConnector);
   const bringSelectedToFront = store((state) => state.bringSelectedToFront);
   const sendSelectedToBack = store((state) => state.sendSelectedToBack);
   const bringSelectedForward = store((state) => state.bringSelectedForward);
@@ -76,11 +79,17 @@ export function App({
   const [editingId, setEditingId] = useState<ItemId | null>(null);
   /** 画像の取り込みに失敗したときのメッセージ。 */
   const [error, setError] = useState<string | null>(null);
-  /** 右クリックメニューの表示位置。null なら出していない。 */
-  const [menuPosition, setMenuPosition] = useState<{
-    x: number;
-    y: number;
+  /** 右クリックメニューの状態。null なら出していない。 */
+  const [menu, setMenu] = useState<{
+    readonly target: ContextMenuTarget;
+    readonly position: { x: number; y: number };
   } | null>(null);
+  /** コネクタを引くモードか。 */
+  const [connectMode, setConnectMode] = useState(false);
+  /** 接続の始点として選ばれたアイテム。 */
+  const [connectingFrom, setConnectingFrom] = useState<ItemId | null>(null);
+  /** これから引くコネクタの種類。 */
+  const [connectorKind, setConnectorKind] = useState<ConnectorKind>("straight");
   const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
 
@@ -155,26 +164,48 @@ export function App({
   }, [addItem, imagePicker, nextItemPosition]);
 
   const handleContextMenu = useCallback(
-    (id: ItemId | null, position: { x: number; y: number }) => {
-      if (id === null) {
-        setMenuPosition(null);
+    (target: ContextMenuTarget | null, position: { x: number; y: number }) => {
+      if (target === null) {
+        setMenu(null);
         return;
       }
       // 未選択のアイテムを右クリックしたら、そのアイテムを対象にする
-      if (!selectedIds.has(id)) {
-        selectOnly(id);
+      if (target.kind === "item" && !selectedIds.has(target.id)) {
+        selectOnly(target.id);
       }
       setEditingId(null);
-      setMenuPosition(position);
+      setMenu({ target, position });
     },
     [selectOnly, selectedIds],
   );
+
+  /** 接続モードでアイテムが選ばれたときの処理。 */
+  const handlePickForConnection = useCallback(
+    (id: ItemId) => {
+      setConnectingFrom((from) => {
+        if (from === null) {
+          return id;
+        }
+        connectItems(from, id, connectorKind);
+        // 続けて別の線を引けるよう、始点を空にしてモードは維持する
+        return null;
+      });
+    },
+    [connectItems, connectorKind],
+  );
+
+  /** 接続モードの開始・終了。 */
+  const toggleConnectMode = useCallback(() => {
+    setConnectMode((current) => !current);
+    setConnectingFrom(null);
+    clearSelection();
+  }, [clearSelection]);
 
   const handleSelect = useCallback(
     (id: ItemId | null, additive: boolean) => {
       // 別のアイテムを触ったら編集とメニューを終える
       setEditingId((current) => (current === id ? current : null));
-      setMenuPosition(null);
+      setMenu(null);
       if (id === null) {
         clearSelection();
         return;
@@ -217,6 +248,9 @@ export function App({
         onDeleteSelected={removeSelected}
         onContextMenu={handleContextMenu}
         onActivateItem={handleActivateItem}
+        connectMode={connectMode}
+        onPickForConnection={handlePickForConnection}
+        {...(connectingFrom !== null ? { connectingFrom } : {})}
         images={images}
         {...(editingId !== null ? { editingItemId: editingId } : {})}
       />
@@ -249,19 +283,32 @@ export function App({
         onAddImage={handleAddImage}
         canDelete={selectedIds.size > 0}
         onDeleteSelected={removeSelected}
+        connectMode={connectMode}
+        onToggleConnectMode={toggleConnectMode}
+        connectorKind={connectorKind}
+        onChangeConnectorKind={setConnectorKind}
       />
 
-      {menuPosition === null ? null : (
+      {menu === null ? null : (
         <ContextMenu
-          position={menuPosition}
-          onClose={() => setMenuPosition(null)}
-          actions={[
-            { label: "最前面へ移動", onSelect: bringSelectedToFront },
-            { label: "一つ手前へ", onSelect: bringSelectedForward },
-            { label: "一つ奥へ", onSelect: sendSelectedBackward },
-            { label: "最背面へ移動", onSelect: sendSelectedToBack },
-            { label: "削除", onSelect: removeSelected },
-          ]}
+          position={menu.position}
+          onClose={() => setMenu(null)}
+          actions={
+            menu.target.kind === "connector"
+              ? [
+                  {
+                    label: "線を削除",
+                    onSelect: () => removeConnector(menu.target.id),
+                  },
+                ]
+              : [
+                  { label: "最前面へ移動", onSelect: bringSelectedToFront },
+                  { label: "一つ手前へ", onSelect: bringSelectedForward },
+                  { label: "一つ奥へ", onSelect: sendSelectedBackward },
+                  { label: "最背面へ移動", onSelect: sendSelectedToBack },
+                  { label: "削除", onSelect: removeSelected },
+                ]
+          }
         />
       )}
 

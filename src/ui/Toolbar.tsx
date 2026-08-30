@@ -5,7 +5,12 @@
  * ユーザーが見失うため。
  */
 
-import { STICKY_COLORS, type ShapeKind, type StickyColor } from "../domain/board";
+import {
+  STICKY_COLORS,
+  type ConnectorKind,
+  type ShapeKind,
+  type StickyColor,
+} from "../domain/board";
 import { STICKY_PALETTE } from "../render/palette";
 
 export interface ToolbarProps {
@@ -15,7 +20,18 @@ export interface ToolbarProps {
   readonly onAddImage: () => void;
   readonly canDelete: boolean;
   readonly onDeleteSelected: () => void;
+  readonly connectMode: boolean;
+  readonly onToggleConnectMode: () => void;
+  readonly connectorKind: ConnectorKind;
+  readonly onChangeConnectorKind: (kind: ConnectorKind) => void;
 }
+
+/** コネクタの種類の表示名。 */
+const CONNECTOR_LABELS: Record<ConnectorKind, string> = {
+  straight: "直線",
+  polyline: "折れ線",
+  curved: "曲線",
+};
 
 /** 付箋の色の日本語名。 */
 const COLOR_LABELS: Record<StickyColor, string> = {
@@ -34,6 +50,10 @@ export function Toolbar({
   onAddImage,
   canDelete,
   onDeleteSelected,
+  connectMode,
+  onToggleConnectMode,
+  connectorKind,
+  onChangeConnectorKind,
 }: ToolbarProps) {
   return (
     <div className="toolbar" role="toolbar" aria-label="アイテムの追加">
@@ -68,6 +88,35 @@ export function Toolbar({
         <button type="button" onClick={onAddImage}>
           画像
         </button>
+      </div>
+
+      <div className="toolbar-separator" />
+
+      <div className="toolbar-group">
+        <button
+          type="button"
+          className={connectMode ? "is-active" : ""}
+          aria-pressed={connectMode}
+          onClick={onToggleConnectMode}
+        >
+          接続
+        </button>
+        <label className="connector-kind">
+          <span className="visually-hidden">線の種類</span>
+          <select
+            aria-label="線の種類"
+            value={connectorKind}
+            onChange={(event) =>
+              onChangeConnectorKind(event.target.value as ConnectorKind)
+            }
+          >
+            {(Object.keys(CONNECTOR_LABELS) as ConnectorKind[]).map((kind) => (
+              <option key={kind} value={kind}>
+                {CONNECTOR_LABELS[kind]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="toolbar-separator" />

@@ -7,6 +7,8 @@
   --toolbar-border: rgba(0, 0, 0, 0.1);
   --toolbar-text: #2b2b2b;
   --toolbar-hover: rgba(0, 0, 0, 0.06);
+  --toolbar-active: #3b82f6;
+  --toolbar-active-text: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +17,8 @@
     --toolbar-border: rgba(255, 255, 255, 0.12);
     --toolbar-text: #e8eaf0;
     --toolbar-hover: rgba(255, 255, 255, 0.1);
+    --toolbar-active: #3b82f6;
+    --toolbar-active-text: #ffffff;
   }
 }
 
@@ -266,4 +270,34 @@ body,
 .context-menu button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.toolbar button.is-active {
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
+}
+
+.toolbar button.is-active:hover {
+  background: var(--toolbar-active);
+}
+
+.connector-kind select {
+  padding: 4px 6px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

@@ -6,7 +6,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { Board, Item, ItemId } from "../domain/board";
+import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
+import { hitTestConnector } from "../domain/connectorHitTest";
 import { hitTest } from "../domain/hitTest";
 import {
   cursorForHandle,
@@ -44,11 +45,20 @@ export interface BoardCanvasProps {
     dy: number,
   ) => void;
   readonly onDeleteSelected: () => void;
-  /** 右クリックされたとき。空白部分なら id は null。 */
+  /** 右クリックされたとき。空白部分なら target は null。 */
   readonly onContextMenu?: (
-    id: ItemId | null,
+    target: ContextMenuTarget | null,
     position: { x: number; y: number },
   ) => void;
+  /**
+   * コネクタを引くモードか。
+   * このモードではアイテムをクリックしても選択や移動をせず、接続先として拾う。
+   */
+  readonly connectMode?: boolean;
+  /** 接続モードでアイテムが選ばれたとき。 */
+  readonly onPickForConnection?: (id: ItemId) => void;
+  /** 接続の始点として選ばれているアイテム。 */
+  readonly connectingFrom?: ItemId;
   /** アイテムがダブルクリックされたとき。 */
   readonly onActivateItem?: (id: ItemId) => void;
   readonly theme?: CanvasTheme;
@@ -56,6 +66,11 @@ export interface BoardCanvasProps {
   /** 編集中のアイテム。Canvas 側ではそのテキストを描かない。 */
   readonly editingItemId?: ItemId;
 }
+
+/** 右クリックの対象。 */
+export type ContextMenuTarget =
+  | { readonly kind: "item"; readonly id: ItemId }
+  | { readonly kind: "connector"; readonly id: ConnectorId };
 
 interface Size {
   readonly width: number;
@@ -78,6 +93,9 @@ export function BoardCanvas({
   onResizeItem,
   onDeleteSelected,
   onContextMenu,
+  connectMode = false,
+  onPickForConnection,
+  connectingFrom,
   onActivateItem,
   theme,
   images,
@@ -108,6 +126,8 @@ export function BoardCanvas({
     onResizeItem,
     onContextMenu,
     onActivateItem,
+    connectMode,
+    onPickForConnection,
   });
   useEffect(() => {
     latest.current = {
@@ -120,6 +140,8 @@ export function BoardCanvas({
       onResizeItem,
       onContextMenu,
       onActivateItem,
+      connectMode,
+      onPickForConnection,
     };
   });
 
@@ -164,7 +186,11 @@ export function BoardCanvas({
       devicePixelRatio: dpr,
       viewport,
       items: board.items,
-      selectedIds,
+      connectors: board.connectors,
+      selectedIds:
+        connectingFrom === undefined
+          ? selectedIds
+          : new Set([...selectedIds, connectingFrom]),
       ...(theme !== undefined ? { theme } : {}),
       ...(images !== undefined ? { images } : {}),
       ...(editingItemId !== undefined ? { editingItemId } : {}),
@@ -174,7 +200,9 @@ export function BoardCanvas({
     size,
     viewport,
     board.items,
+    board.connectors,
     selectedIds,
+    connectingFrom,
     theme,
     images,
     editingItemId,
@@ -210,9 +238,28 @@ export function BoardCanvas({
       if (event.button !== 0) {
         return;
       }
-      const { board, viewport, selectedIds, onSelect } = latest.current;
+      const {
+        board,
+        viewport,
+        selectedIds,
+        onSelect,
+        connectMode,
+        onPickForConnection,
+      } = latest.current;
       const world = toWorld(viewport, toCanvasPoint(event));
       const origin = { x: event.clientX, y: event.clientY };
+
+      if (connectMode) {
+        const target = hitTest(board.items, world);
+        if (target !== undefined) {
+          onPickForConnection?.(target.id);
+          return;
+        }
+        // 空白部分ではキャンバスを動かせるようにしておく
+        drag.current = { origin, mode: { kind: "pan" } };
+        setIsPanning(true);
+        return;
+      }
 
       // リサイズハンドルはアイテム本体より優先して判定する。
       // 角のハンドルはアイテムの内側にも重なっているため。
@@ -301,8 +348,20 @@ export function BoardCanvas({
         return;
       }
       const world = toWorld(viewport, toCanvasPoint(event));
-      const hit = hitTest(board.items, world);
-      onContextMenu(hit?.id ?? null, { x: event.clientX, y: event.clientY });
+      const position = { x: event.clientX, y: event.clientY };
+
+      // アイテムを先に見る。線がアイテムに重なっている場合、
+      // 見た目の前面にあるアイテムを狙ったと解釈するのが自然なため。
+      const item = hitTest(board.items, world);
+      if (item !== undefined) {
+        onContextMenu({ kind: "item", id: item.id }, position);
+        return;
+      }
+      const connector = hitTestConnector(board, world, viewport.scale);
+      onContextMenu(
+        connector === undefined ? null : { kind: "connector", id: connector.id },
+        position,
+      );
     };
 
     const handlePointerUp = () => {
@@ -365,7 +424,7 @@ export function BoardCanvas({
       ref={setCanvas}
       data-testid="board-canvas"
       className="board-canvas"
-      style={{ cursor: currentCursor(isPanning, hoveredHandle) }}
+      style={{ cursor: currentCursor(isPanning, hoveredHandle, connectMode) }}
     />
   );
 }
@@ -385,7 +444,11 @@ function findResizeTarget(
 function currentCursor(
   isPanning: boolean,
   hoveredHandle: ResizeHandle | null,
+  connectMode: boolean,
 ): string {
+  if (connectMode) {
+    return "crosshair";
+  }
   if (hoveredHandle !== null) {
     return cursorForHandle(hoveredHandle);
   }

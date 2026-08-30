@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBoard, createImage, createStickyNote } from "../domain/board";
-import { addItem, moveItems } from "../domain/boardOps";
+import {
+  createBoard,
+  createConnector,
+  createImage,
+  createStickyNote,
+} from "../domain/board";
+import { addConnector, addItem, moveItems } from "../domain/boardOps";
 import {
   createViewport,
   MAX_SCALE,
@@ -10,6 +15,7 @@ import {
   type Viewport,
 } from "../domain/viewport";
 import { CANVAS_THEME } from "../render/boardRenderer";
+import { SELECTION_COLOR } from "../render/palette";
 import { stubLayout, type LayoutStub } from "../test/mockLayout";
 import { stubCanvasContext } from "../test/mockCanvas";
 import { BoardCanvas } from "./BoardCanvas";
@@ -39,6 +45,8 @@ interface RenderOptions {
   readonly viewport?: Viewport;
   readonly board?: ReturnType<typeof boardWithSticky>;
   readonly selectedIds?: ReadonlySet<string>;
+  readonly connectMode?: boolean;
+  readonly connectingFrom?: string;
 }
 
 /** BoardCanvas を描画し、各コールバックの呼び出しを記録する。 */
@@ -51,12 +59,17 @@ function renderCanvas(options: RenderOptions = {}) {
     onDeleteSelected: vi.fn(),
     onContextMenu: vi.fn(),
     onActivateItem: vi.fn(),
+    onPickForConnection: vi.fn(),
   };
   const view = render(
     <BoardCanvas
       board={options.board ?? createBoard({ id: "b1" })}
       viewport={options.viewport ?? createViewport()}
       selectedIds={options.selectedIds ?? new Set()}
+      connectMode={options.connectMode ?? false}
+      {...(options.connectingFrom !== undefined
+        ? { connectingFrom: options.connectingFrom }
+        : {})}
       {...handlers}
     />,
   );
@@ -697,7 +710,10 @@ describe("BoardCanvas: 右クリック", () => {
       board: boardWithSticky(),
     });
     fireEvent.contextMenu(canvas, { clientX: 50, clientY: 60 });
-    expect(onContextMenu).toHaveBeenCalledWith("s1", { x: 50, y: 60 });
+    expect(onContextMenu).toHaveBeenCalledWith(
+      { kind: "item", id: "s1" },
+      { x: 50, y: 60 },
+    );
   });
 
   it("空白部分の右クリックでは id が null になる", () => {
@@ -733,5 +749,152 @@ describe("BoardCanvas: 右クリック", () => {
     );
     const canvas = screen.getAllByTestId("board-canvas")[0] as HTMLCanvasElement;
     expect(() => fireEvent.contextMenu(canvas, { clientX: 50, clientY: 50 })).not.toThrow();
+  });
+});
+
+/** 付箋 2 枚を 1 本のコネクタで結んだボード。 */
+function boardWithConnector(kind: "straight" | "polyline" | "curved" = "straight") {
+  let board = createBoard({ id: "b1" });
+  board = addItem(
+    board,
+    createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+  );
+  board = addItem(
+    board,
+    createStickyNote({ id: "b", x: 300, y: 0, width: 100, height: 100 }),
+  );
+  return addConnector(
+    board,
+    createConnector({ id: "c1", fromItemId: "a", toItemId: "b", kind }),
+  );
+}
+
+describe("BoardCanvas: コネクタの描画", () => {
+  it("コネクタを描く", () => {
+    renderCanvas({ board: boardWithConnector() });
+    // 直線コネクタは 2 点を moveTo / lineTo で結ぶ
+    const lineTo = canvasStub.mock
+      .callsOf("lineTo")
+      .map((call) => call.args);
+    expect(lineTo).toContainEqual([300, 50]);
+  });
+
+  it("曲線コネクタはベジェで描く", () => {
+    renderCanvas({ board: boardWithConnector("curved") });
+    expect(canvasStub.mock.callsOf("bezierCurveTo").length).toBeGreaterThan(0);
+  });
+
+  it("アイテムを動かすと経路も変わる", () => {
+    const board = boardWithConnector();
+    const moved = moveItems(board, ["b"], 200, 0);
+    renderCanvas({ board: moved });
+    const lineTo = canvasStub.mock
+      .callsOf("lineTo")
+      .map((call) => call.args);
+    expect(lineTo).toContainEqual([500, 50]);
+  });
+});
+
+describe("BoardCanvas: 接続モード", () => {
+  it("アイテムを押すと接続先として拾う", () => {
+    const { canvas, onPickForConnection } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    expect(onPickForConnection).toHaveBeenCalledWith("a");
+  });
+
+  it("接続モードでは選択も移動もしない", () => {
+    const { canvas, onSelect, onMoveSelected } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 90, clientY: 50 });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onMoveSelected).not.toHaveBeenCalled();
+  });
+
+  it("空白部分ではキャンバスを動かせる", () => {
+    const { canvas, onViewportChange, onPickForConnection } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 700, clientY: 700 });
+    fireEvent.pointerMove(window, { clientX: 720, clientY: 700 });
+    expect(onPickForConnection).not.toHaveBeenCalled();
+    expect(onViewportChange).toHaveBeenCalled();
+  });
+
+  it("接続モードのカーソルは十字にする", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    expect(canvas.style.cursor).toBe("crosshair");
+  });
+
+  it("始点に選ばれたアイテムを強調する", () => {
+    renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+      connectingFrom: "a",
+    });
+    // 選択枠の色で描かれる
+    expect(canvasStub.mock.ctx.strokeStyle).toBe(SELECTION_COLOR);
+  });
+
+  it("onPickForConnection が未指定でも壊れない", () => {
+    render(
+      <BoardCanvas
+        board={boardWithConnector()}
+        viewport={createViewport()}
+        selectedIds={new Set()}
+        onViewportChange={vi.fn()}
+        onSelect={vi.fn()}
+        onMoveSelected={vi.fn()}
+        onResizeItem={vi.fn()}
+        onDeleteSelected={vi.fn()}
+        connectMode
+      />,
+    );
+    const canvas = screen.getAllByTestId("board-canvas")[0] as HTMLCanvasElement;
+    expect(() =>
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 }),
+    ).not.toThrow();
+  });
+});
+
+describe("BoardCanvas: コネクタの右クリック", () => {
+  it("線の上で右クリックするとコネクタを通知する", () => {
+    const { canvas, onContextMenu } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    // 2 枚の付箋の間、線の上
+    fireEvent.contextMenu(canvas, { clientX: 200, clientY: 50 });
+    expect(onContextMenu).toHaveBeenCalledWith(
+      { kind: "connector", id: "c1" },
+      { x: 200, y: 50 },
+    );
+  });
+
+  it("アイテムに重なる場合はアイテムを優先する", () => {
+    const { canvas, onContextMenu } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.contextMenu(canvas, { clientX: 50, clientY: 50 });
+    expect(onContextMenu).toHaveBeenCalledWith(
+      { kind: "item", id: "a" },
+      { x: 50, y: 50 },
+    );
+  });
+
+  it("線からもアイテムからも外れていれば null を通知する", () => {
+    const { canvas, onContextMenu } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.contextMenu(canvas, { clientX: 200, clientY: 400 });
+    expect(onContextMenu).toHaveBeenCalledWith(null, { x: 200, y: 400 });
   });
 });

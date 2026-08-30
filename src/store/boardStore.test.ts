@@ -404,3 +404,86 @@ describe("resizeItem: 画像の縦横比維持", () => {
     });
   });
 });
+
+describe("connectItems", () => {
+  /** 付箋を 2 枚追加してその id を返す。 */
+  function setupTwo() {
+    const store = setup();
+    return { store, ids: [addSticky(store, 0, 0), addSticky(store, 300, 0)] };
+  }
+
+  it("コネクタを追加する", () => {
+    const { store, ids } = setupTwo();
+    const id = store
+      .getState()
+      .connectItems(ids[0] as string, ids[1] as string, "straight");
+    expect(id).not.toBeNull();
+    expect(store.getState().board.connectors).toMatchObject([
+      { fromItemId: ids[0], toItemId: ids[1], kind: "straight" },
+    ]);
+  });
+
+  it("種類を指定できる", () => {
+    const { store, ids } = setupTwo();
+    store.getState().connectItems(ids[0] as string, ids[1] as string, "curved");
+    expect(store.getState().board.connectors[0]?.kind).toBe("curved");
+  });
+
+  it("自分自身への接続は作らない", () => {
+    const { store, ids } = setupTwo();
+    expect(
+      store.getState().connectItems(ids[0] as string, ids[0] as string, "straight"),
+    ).toBeNull();
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("同じ組み合わせを二重に作らない", () => {
+    const { store, ids } = setupTwo();
+    store.getState().connectItems(ids[0] as string, ids[1] as string, "straight");
+    expect(
+      store.getState().connectItems(ids[0] as string, ids[1] as string, "curved"),
+    ).toBeNull();
+    expect(store.getState().board.connectors).toHaveLength(1);
+  });
+
+  it("向きが逆でも二重に作らない", () => {
+    const { store, ids } = setupTwo();
+    store.getState().connectItems(ids[0] as string, ids[1] as string, "straight");
+    expect(
+      store.getState().connectItems(ids[1] as string, ids[0] as string, "straight"),
+    ).toBeNull();
+  });
+});
+
+describe("removeConnector", () => {
+  it("指定したコネクタを取り除く", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().removeConnector(id);
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("アイテムは消さない", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().removeConnector(id);
+    expect(store.getState().board.items).toHaveLength(2);
+  });
+});
+
+describe("アイテム削除とコネクタ", () => {
+  it("アイテムを消すと繋がるコネクタも消える", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    store.getState().connectItems(a, b, "straight");
+    store.getState().selectOnly(a);
+    store.getState().removeSelected();
+    expect(store.getState().board.connectors).toEqual([]);
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+});

@@ -1,0 +1,200 @@
+/**
+ * コネクタの経路計算。
+ *
+ * 経路はアイテムの現在位置から毎回求める。コネクタ自体に座標を持たせると
+ * アイテムを動かすたびに更新が必要になり、取りこぼすと線が取り残される。
+ * 「常に今の位置から計算する」ことで、追従の実装そのものが不要になる。
+ */
+
+import type { ConnectorKind, Item } from "./board";
+import { rectCenter, type Point, type Rect } from "./geometry";
+
+/** アイテムの輪郭の種類。円だけが楕円、それ以外は矩形として扱う。 */
+export type Outline = "rectangle" | "ellipse";
+
+/** 矩形の辺。 */
+export type Side = "top" | "right" | "bottom" | "left";
+
+/** 描画に必要な経路の情報。 */
+export type ConnectorPath =
+  | { readonly kind: "polyline"; readonly points: readonly Point[] }
+  | {
+      readonly kind: "curve";
+      readonly from: Point;
+      readonly control1: Point;
+      readonly control2: Point;
+      readonly to: Point;
+    };
+
+/** 曲線の制御点が最低限張り出す長さ。近接時でも曲線らしさを保つため。 */
+const MIN_CURVE_BULGE = 40;
+
+/** 制御点の張り出しを距離に対してどれだけ取るか。 */
+const CURVE_BULGE_RATIO = 0.4;
+
+/** アイテムの輪郭の種類を返す。 */
+export function outlineOf(item: Item): Outline {
+  return item.type === "shape" && item.shape === "circle"
+    ? "ellipse"
+    : "rectangle";
+}
+
+/** アイテムの外接矩形。 */
+function boundsOf(item: Item): Rect {
+  return { x: item.x, y: item.y, width: item.width, height: item.height };
+}
+
+/**
+ * 中心から `towards` へ向かう半直線が輪郭と交わる点を返す。
+ * 線をアイテムの内側まで引かず、境界で止めるために使う。
+ */
+export function boundaryAnchor(
+  bounds: Rect,
+  towards: Point,
+  outline: Outline,
+): Point {
+  const center = rectCenter(bounds);
+  const dx = towards.x - center.x;
+  const dy = towards.y - center.y;
+  if (dx === 0 && dy === 0) {
+    return center;
+  }
+
+  const halfWidth = bounds.width / 2;
+  const halfHeight = bounds.height / 2;
+  if (halfWidth === 0 || halfHeight === 0) {
+    return center;
+  }
+
+  const scale =
+    outline === "ellipse"
+      ? 1 / Math.hypot(dx / halfWidth, dy / halfHeight)
+      : // 矩形では、先に辺に達するほうの軸で止める
+        Math.min(
+          dx === 0 ? Number.POSITIVE_INFINITY : halfWidth / Math.abs(dx),
+          dy === 0 ? Number.POSITIVE_INFINITY : halfHeight / Math.abs(dy),
+        );
+
+  return { x: center.x + dx * scale, y: center.y + dy * scale };
+}
+
+/** 指定した辺の中点。円の場合もこの点は楕円上にある。 */
+export function sideAnchor(bounds: Rect, side: Side): Point {
+  const center = rectCenter(bounds);
+  switch (side) {
+    case "left":
+      return { x: bounds.x, y: center.y };
+    case "right":
+      return { x: bounds.x + bounds.width, y: center.y };
+    case "top":
+      return { x: center.x, y: bounds.y };
+    default:
+      return { x: center.x, y: bounds.y + bounds.height };
+  }
+}
+
+/** 2 つのアイテムの位置関係から、どちらの辺で接続するかを決める。 */
+function facingSides(
+  from: Rect,
+  to: Rect,
+): { fromSide: Side; toSide: Side; horizontal: boolean } {
+  const fromCenter = rectCenter(from);
+  const toCenter = rectCenter(to);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { fromSide: "right", toSide: "left", horizontal: true }
+      : { fromSide: "left", toSide: "right", horizontal: true };
+  }
+  return dy >= 0
+    ? { fromSide: "bottom", toSide: "top", horizontal: false }
+    : { fromSide: "top", toSide: "bottom", horizontal: false };
+}
+
+/** 2 点を直線で結ぶ経路。 */
+function straightPath(from: Rect, to: Rect, fromItem: Item, toItem: Item) {
+  const fromAnchor = boundaryAnchor(from, rectCenter(to), outlineOf(fromItem));
+  const toAnchor = boundaryAnchor(to, rectCenter(from), outlineOf(toItem));
+  return { kind: "polyline", points: [fromAnchor, toAnchor] } as const;
+}
+
+/**
+ * 直交する折れ線で結ぶ経路。
+ * 向かい合う辺から出て、中間で一度だけ折れる 3 区間の経路にする。
+ */
+function polylinePath(from: Rect, to: Rect) {
+  const { fromSide, toSide, horizontal } = facingSides(from, to);
+  const start = sideAnchor(from, fromSide);
+  const end = sideAnchor(to, toSide);
+
+  if (horizontal) {
+    const middleX = (start.x + end.x) / 2;
+    return {
+      kind: "polyline",
+      points: [
+        start,
+        { x: middleX, y: start.y },
+        { x: middleX, y: end.y },
+        end,
+      ],
+    } as const;
+  }
+  const middleY = (start.y + end.y) / 2;
+  return {
+    kind: "polyline",
+    points: [start, { x: start.x, y: middleY }, { x: end.x, y: middleY }, end],
+  } as const;
+}
+
+/**
+ * 3 次ベジェ曲線で結ぶ経路。
+ * 制御点を接続する辺の法線方向に張り出させ、辺から垂直に出ていくようにする。
+ */
+function curvedPath(from: Rect, to: Rect) {
+  const { fromSide, toSide, horizontal } = facingSides(from, to);
+  const start = sideAnchor(from, fromSide);
+  const end = sideAnchor(to, toSide);
+
+  const distance = Math.hypot(end.x - start.x, end.y - start.y);
+  const bulge = Math.max(MIN_CURVE_BULGE, distance * CURVE_BULGE_RATIO);
+
+  if (horizontal) {
+    const direction = fromSide === "right" ? 1 : -1;
+    return {
+      kind: "curve",
+      from: start,
+      control1: { x: start.x + bulge * direction, y: start.y },
+      control2: { x: end.x - bulge * direction, y: end.y },
+      to: end,
+    } as const;
+  }
+  const direction = fromSide === "bottom" ? 1 : -1;
+  return {
+    kind: "curve",
+    from: start,
+    control1: { x: start.x, y: start.y + bulge * direction },
+    control2: { x: end.x, y: end.y - bulge * direction },
+    to: end,
+  } as const;
+}
+
+/** コネクタの経路を、接続先アイテムの現在位置から求める。 */
+export function connectorPath(
+  kind: ConnectorKind,
+  fromItem: Item,
+  toItem: Item,
+): ConnectorPath {
+  const from = boundsOf(fromItem);
+  const to = boundsOf(toItem);
+
+  switch (kind) {
+    case "polyline":
+      return polylinePath(from, to);
+    case "curved":
+      return curvedPath(from, to);
+    default:
+      return straightPath(from, to, fromItem, toItem);
+  }
+}

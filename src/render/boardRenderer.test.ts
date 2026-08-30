@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createConnector,
   createImage,
   createShape,
   createStickyNote,
@@ -239,5 +240,73 @@ describe("renderBoard: リサイズハンドル", () => {
       selectedIds: new Set(),
     });
     expect(handleCount(mock, 0)).toBe(0);
+  });
+});
+
+describe("renderBoard: コネクタ", () => {
+  const a = createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 });
+  const b = createStickyNote({
+    id: "b",
+    x: 300,
+    y: 0,
+    width: 100,
+    height: 100,
+  });
+  const connector = createConnector({
+    id: "c1",
+    fromItemId: "a",
+    toItemId: "b",
+  });
+
+  // グリッドも線を引くので、コネクタだけを見るためにグリッドは消す
+  const withoutGrid = { ...baseOptions, showGrid: false };
+
+  it("コネクタを描く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...withoutGrid,
+      items: [a, b],
+      connectors: [connector],
+    });
+    expect(mock.callsOf("lineTo").map((call) => call.args)).toContainEqual([
+      300, 50,
+    ]);
+  });
+
+  it("接続先が失われたコネクタは描かない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...withoutGrid,
+      items: [a],
+      connectors: [connector],
+    });
+    expect(mock.callsOf("lineTo")).toHaveLength(0);
+  });
+
+  it("コネクタが無ければ何もしない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, { ...withoutGrid, items: [a, b], connectors: [] });
+    expect(mock.callsOf("lineTo")).toHaveLength(0);
+  });
+
+  it("選択中のコネクタは選択色で描く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...withoutGrid,
+      items: [a, b],
+      connectors: [connector],
+      selectedConnectorId: "c1",
+    });
+    expect(mock.assignmentsTo("strokeStyle")).toContain(SELECTION_COLOR);
+  });
+
+  it("選択していないコネクタは選択色で描かない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...withoutGrid,
+      items: [a, b],
+      connectors: [connector],
+    });
+    expect(mock.assignmentsTo("strokeStyle")).not.toContain(SELECTION_COLOR);
   });
 });

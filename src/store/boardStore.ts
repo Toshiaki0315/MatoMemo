@@ -10,10 +10,20 @@
  */
 
 import { create, type StoreApi, type UseBoundStore } from "zustand";
-import { createBoard, type Board, type Item, type ItemId } from "../domain/board";
 import {
+  createBoard,
+  createConnector,
+  type Board,
+  type ConnectorId,
+  type ConnectorKind,
+  type Item,
+  type ItemId,
+} from "../domain/board";
+import {
+  addConnector as addConnectorToBoard,
   addItem as addItemToBoard,
   moveItems,
+  removeConnectors,
   removeItems,
   replaceItem as replaceItemInBoard,
 } from "../domain/boardOps";
@@ -42,6 +52,18 @@ export interface BoardState {
    */
   addItem(create: (id: ItemId) => Item): ItemId;
   replaceItem(item: Item): void;
+
+  /**
+   * アイテム同士を結ぶコネクタを追加する。
+   * 同じ組み合わせが既にある場合や自分自身への接続は追加しない。
+   * @returns 追加した場合は id、追加しなかった場合は null
+   */
+  connectItems(
+    fromItemId: ItemId,
+    toItemId: ItemId,
+    kind: ConnectorKind,
+  ): ConnectorId | null;
+  removeConnector(id: ConnectorId): void;
   moveSelected(dx: number, dy: number): void;
   /**
    * アイテムをリサイズする。画像は原寸の縦横比を必ず保つ。
@@ -95,6 +117,36 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
 
     replaceItem(item) {
       set((state) => ({ board: replaceItemInBoard(state.board, item) }));
+    },
+
+    connectItems(fromItemId, toItemId, kind) {
+      // 自分自身への接続は線として描けないため作らない
+      if (fromItemId === toItemId) {
+        return null;
+      }
+      const { board } = get();
+      const duplicated = board.connectors.some(
+        (connector) =>
+          (connector.fromItemId === fromItemId &&
+            connector.toItemId === toItemId) ||
+          (connector.fromItemId === toItemId &&
+            connector.toItemId === fromItemId),
+      );
+      if (duplicated) {
+        return null;
+      }
+      const id = createId();
+      set({
+        board: addConnectorToBoard(
+          board,
+          createConnector({ id, fromItemId, toItemId, kind }),
+        ),
+      });
+      return id;
+    },
+
+    removeConnector(id) {
+      set((state) => ({ board: removeConnectors(state.board, [id]) }));
     },
 
     moveSelected(dx, dy) {

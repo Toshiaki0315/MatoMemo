@@ -5,9 +5,11 @@
  * 状態を持たない。呼び出し側が毎フレーム全体を描き直す。
  */
 
-import type { Item, ItemId } from "../domain/board";
+import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
+import { connectorPath } from "../domain/connectorPath";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
+import { drawConnector } from "./connectorRenderer";
 import {
   drawItem,
   drawResizeHandles,
@@ -47,6 +49,9 @@ export interface RenderBoardOptions {
   readonly images?: ImageCache;
   /** 編集中のアイテム。そのアイテムのテキストは Canvas 側では描かない。 */
   readonly editingItemId?: ItemId;
+  /** 描画するコネクタ。アイテムの現在位置から経路を毎回計算する。 */
+  readonly connectors?: Board["connectors"];
+  readonly selectedConnectorId?: ConnectorId;
 }
 
 /** グリッド線の太さ (px)。ズームしても一定にするため画面座標で描く。 */
@@ -105,6 +110,10 @@ function drawItems(
     dpr * viewport.y,
   );
 
+  // コネクタはアイテムより背面に描く。線がアイテムの上に乗ると、
+  // 付箋の文字が読みづらくなるため。
+  drawConnectors(ctx, options, items);
+
   const baseOptions =
     options.images !== undefined ? { images: options.images } : {};
   for (const item of items) {
@@ -130,6 +139,33 @@ function drawItems(
   }
 
   ctx.restore();
+}
+
+/** コネクタを描く。接続先が見つからないものは飛ばす。 */
+function drawConnectors(
+  ctx: CanvasRenderingContext2D,
+  options: RenderBoardOptions,
+  items: readonly Item[],
+): void {
+  const connectors = options.connectors ?? [];
+  if (connectors.length === 0) {
+    return;
+  }
+  const byId = new Map(items.map((item) => [item.id, item]));
+
+  for (const connector of connectors) {
+    const fromItem = byId.get(connector.fromItemId);
+    const toItem = byId.get(connector.toItemId);
+    if (fromItem === undefined || toItem === undefined) {
+      continue;
+    }
+    drawConnector(
+      ctx,
+      connectorPath(connector.kind, fromItem, toItem),
+      options.viewport.scale,
+      { selected: connector.id === options.selectedConnectorId },
+    );
+  }
 }
 
 /**
