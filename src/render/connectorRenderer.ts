@@ -3,9 +3,11 @@
  */
 
 import {
+  arrowDepth,
   arrowHead,
   capLength,
   connectorEnds,
+  trimPath,
   type ConnectorPath,
 } from "../domain/connectorPath";
 import {
@@ -57,28 +59,50 @@ export function drawConnector(
     dashPattern(stroke.strokeStyle, stroke.strokeWidth, scale),
   );
 
+  const startCap = options.startCap ?? "none";
+  const endCap = options.endCap ?? "none";
+  const size = capLength(options.capSize ?? "medium", stroke.strokeWidth) / scale;
+
+  // 線は印の手前で止める。印の下まで線を伸ばすと、線の端の丸い
+  // ふくらみが矢印の先からはみ出して、尖って見えなくなる。
+  let stroked = trimPath(path, "from", capInset(startCap, size));
+  stroked = trimPath(stroked, "to", capInset(endCap, size));
+
   ctx.beginPath();
-  if (path.kind === "curve") {
-    ctx.moveTo(path.from.x, path.from.y);
+  if (stroked.kind === "curve") {
+    ctx.moveTo(stroked.from.x, stroked.from.y);
     ctx.bezierCurveTo(
-      path.control1.x,
-      path.control1.y,
-      path.control2.x,
-      path.control2.y,
-      path.to.x,
-      path.to.y,
+      stroked.control1.x,
+      stroked.control1.y,
+      stroked.control2.x,
+      stroked.control2.y,
+      stroked.to.x,
+      stroked.to.y,
     );
   } else {
-    tracePolyline(ctx, path.points);
+    tracePolyline(ctx, stroked.points);
   }
   ctx.stroke();
   // 矢印や丸は破線にしないので、ここで戻しておく
   ctx.setLineDash([]);
 
-  const size =
-    capLength(options.capSize ?? "medium", stroke.strokeWidth) / scale;
-  drawCap(ctx, path, "from", options.startCap ?? "none", size);
-  drawCap(ctx, path, "to", options.endCap ?? "none", size);
+  // 印は元の経路に対して描く。先端の位置はアイテムの境界のまま変わらない。
+  drawCap(ctx, path, "from", startCap, size);
+  drawCap(ctx, path, "to", endCap, size);
+}
+
+/** 印の手前で線を止めるために、端を引っ込める長さ。 */
+function capInset(cap: EndCap, size: number): number {
+  switch (cap) {
+    case "arrow":
+      // 矢羽根の付け根まで。ここで止めれば線のふくらみは三角形の中に隠れる
+      return arrowDepth(size);
+    case "circle":
+      // 丸の中心まで線を伸ばすと縁からはみ出すので、半径の分だけ戻す
+      return size / 2;
+    default:
+      return 0;
+  }
 }
 
 /** 指定した端に印を描く。線と同じ色で塗りつぶす。 */

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { createShape, createStickyNote, type Item } from "./board";
 import {
   CAP_LENGTHS,
+  arrowDepth,
   arrowHead,
   capLength,
+  trimPath,
   connectorEnds,
   boundaryAnchor,
   connectorPath,
@@ -486,5 +488,167 @@ describe("capLength", () => {
     for (const width of [1, 2, 3, 5, 8]) {
       expect(capLength("medium", width)).toBeGreaterThanOrEqual(width * 2);
     }
+  });
+});
+
+describe("arrowDepth", () => {
+  it("矢羽根の付け根までの奥行きを返す", () => {
+    // 付け根は先端から少し手前にあるので、長さより短い
+    expect(arrowDepth(20)).toBeLessThan(20);
+    expect(arrowDepth(20)).toBeGreaterThan(0);
+  });
+
+  it("長さに比例する", () => {
+    expect(arrowDepth(40)).toBeCloseTo(arrowDepth(20) * 2, 10);
+  });
+
+  it("矢羽根の 2 点を先端方向へ射影した位置と一致する", () => {
+    const head = arrowHead(
+      {
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+        ],
+      },
+      "to",
+      20,
+    );
+    // 右向きの矢印なので、付け根の x は先端から arrowDepth だけ手前
+    expect(head?.left.x).toBeCloseTo(100 - arrowDepth(20), 10);
+  });
+});
+
+describe("trimPath", () => {
+  const straight = {
+    kind: "polyline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ],
+  } as const;
+
+  /** 折れ線として点列を取り出す。 */
+  function pointsOf(path: ConnectorPath) {
+    if (path.kind !== "polyline") {
+      throw new Error("polyline ではありません");
+    }
+    return path.points;
+  }
+
+  it("終点を線の向きに沿って手前へ引っ込める", () => {
+    expect(pointsOf(trimPath(straight, "to", 20)).at(-1)).toEqual({
+      x: 80,
+      y: 0,
+    });
+  });
+
+  it("始点も引っ込められる", () => {
+    expect(pointsOf(trimPath(straight, "from", 20))[0]).toEqual({
+      x: 20,
+      y: 0,
+    });
+  });
+
+  it("反対側の端は動かさない", () => {
+    expect(pointsOf(trimPath(straight, "to", 20))[0]).toEqual({ x: 0, y: 0 });
+  });
+
+  it("斜めの線でも向きに沿って引っ込める", () => {
+    const diagonal = {
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 40 },
+      ],
+    } as const;
+    const end = pointsOf(trimPath(diagonal, "to", 10)).at(-1);
+    // 長さ 50 の線を 10 縮めるので、終点は 4/5 の位置
+    expect(end?.x).toBeCloseTo(24, 10);
+    expect(end?.y).toBeCloseTo(32, 10);
+  });
+
+  it("折れ線では最後の区間だけを縮める", () => {
+    const elbow = {
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 100 },
+      ],
+    } as const;
+    const points = pointsOf(trimPath(elbow, "to", 20));
+    expect(points).toHaveLength(3);
+    expect(points[1]).toEqual({ x: 50, y: 0 });
+    expect(points.at(-1)).toEqual({ x: 50, y: 80 });
+  });
+
+  it("区間より長く縮めようとしても区間を越えない", () => {
+    const end = pointsOf(trimPath(straight, "to", 500)).at(-1);
+    expect(end?.x).toBeGreaterThan(0);
+    expect(end?.x).toBeLessThan(100);
+  });
+
+  it("長さ 0 の区間では何もしない", () => {
+    const degenerate = {
+      kind: "polyline",
+      points: [
+        { x: 10, y: 10 },
+        { x: 10, y: 10 },
+      ],
+    } as const;
+    expect(trimPath(degenerate, "to", 20)).toEqual(degenerate);
+  });
+
+  it("点が足りなければそのまま返す", () => {
+    const single = { kind: "polyline", points: [{ x: 0, y: 0 }] } as const;
+    expect(trimPath(single, "to", 20)).toEqual(single);
+  });
+
+  it("縮める距離が 0 ならそのまま返す", () => {
+    expect(trimPath(straight, "to", 0)).toEqual(straight);
+  });
+
+  it("曲線は終端の制御点の向きに沿って引っ込める", () => {
+    const curve = {
+      kind: "curve",
+      from: { x: 0, y: 0 },
+      control1: { x: 40, y: 0 },
+      control2: { x: 80, y: 0 },
+      to: { x: 100, y: 0 },
+    } as const;
+    const trimmed = trimPath(curve, "to", 10);
+    if (trimmed.kind !== "curve") {
+      throw new Error("curve ではありません");
+    }
+    expect(trimmed.to).toEqual({ x: 90, y: 0 });
+    expect(trimmed.from).toEqual({ x: 0, y: 0 });
+  });
+
+  it("曲線の端と制御点が重なっていればそのまま返す", () => {
+    // 向きが決まらないので縮めようがない
+    const degenerate = {
+      kind: "curve",
+      from: { x: 0, y: 0 },
+      control1: { x: 40, y: 0 },
+      control2: { x: 100, y: 0 },
+      to: { x: 100, y: 0 },
+    } as const;
+    expect(trimPath(degenerate, "to", 10)).toEqual(degenerate);
+  });
+
+  it("曲線の始点側も引っ込められる", () => {
+    const curve = {
+      kind: "curve",
+      from: { x: 0, y: 0 },
+      control1: { x: 20, y: 0 },
+      control2: { x: 80, y: 0 },
+      to: { x: 100, y: 0 },
+    } as const;
+    const trimmed = trimPath(curve, "from", 10);
+    if (trimmed.kind !== "curve") {
+      throw new Error("curve ではありません");
+    }
+    expect(trimmed.from).toEqual({ x: 10, y: 0 });
   });
 });

@@ -253,3 +253,75 @@ describe("drawConnector: 太さに応じた調整", () => {
     expect(circleRadius(8)).toBeGreaterThan(circleRadius(2));
   });
 });
+
+describe("drawConnector: 印の手前で線を止める", () => {
+  /** 引いた線の終点（折れ線の最後の lineTo）。 */
+  function strokedEnd(options: Parameters<typeof drawConnector>[3]) {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, options);
+    // 矢印の三角形より前に引かれた線の終点を見る
+    const stroke = mock.calls.findIndex((call) => call.method === "stroke");
+    const lineTo = mock.calls
+      .slice(0, stroke)
+      .filter((call) => call.method === "lineTo");
+    return lineTo.at(-1)?.args as number[];
+  }
+
+  it("印が無ければ端まで線を引く", () => {
+    expect(strokedEnd({})?.[0]).toBe(100);
+  });
+
+  it("矢印があれば付け根まででとどめる", () => {
+    const end = strokedEnd({ endCap: "arrow" })?.[0] as number;
+    expect(end).toBeLessThan(100);
+    expect(end).toBeGreaterThan(0);
+  });
+
+  it("丸があれば中心の手前でとどめる", () => {
+    const end = strokedEnd({ endCap: "circle" })?.[0] as number;
+    expect(end).toBeLessThan(100);
+  });
+
+  it("太い線ほど手前で止める（印が大きくなるため）", () => {
+    const thin = strokedEnd({
+      endCap: "arrow",
+      stroke: { strokeWidth: 1, strokeStyle: "solid" },
+    })?.[0] as number;
+    const thick = strokedEnd({
+      endCap: "arrow",
+      stroke: { strokeWidth: 8, strokeStyle: "solid" },
+    })?.[0] as number;
+    expect(thick).toBeLessThan(thin);
+  });
+
+  it("始点側の印でも同じように止める", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, { startCap: "arrow" });
+    const stroke = mock.calls.findIndex((call) => call.method === "stroke");
+    const moveTo = mock.calls
+      .slice(0, stroke)
+      .filter((call) => call.method === "moveTo");
+    expect(moveTo[0]?.args[0] as number).toBeGreaterThan(0);
+  });
+
+  it("印そのものは元の端に描く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, straight, 1, { endCap: "arrow" });
+    // 三角形の頂点は元の終点のまま
+    expect(mock.callsOf("moveTo").at(-1)?.args).toEqual([100, 0]);
+  });
+
+  it("曲線でも印の手前で止める", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, curve, 1, { endCap: "arrow" });
+    const bezier = mock.callsOf("bezierCurveTo")[0]?.args as number[];
+    // 終点 (100, 100) より手前で終わる
+    expect(bezier[4] as number).toBeLessThan(100);
+  });
+
+  it("曲線でも印は元の端に描く", () => {
+    const mock = createMockContext();
+    drawConnector(mock.ctx, curve, 1, { endCap: "circle" });
+    expect(mock.callsOf("arc")[0]?.args.slice(0, 2)).toEqual([100, 100]);
+  });
+});

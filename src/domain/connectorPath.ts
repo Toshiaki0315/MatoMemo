@@ -316,3 +316,82 @@ export function connectorEnds(path: ConnectorPath): readonly ConnectorEnd[] {
         { end: "to", point: to },
       ];
 }
+
+/**
+ * 矢羽根の付け根が先端からどれだけ手前にあるか。
+ *
+ * 線をここで止めれば、線の端のふくらみ（丸いキャップ）が矢印の先から
+ * はみ出さず、先が尖って見える。
+ */
+export function arrowDepth(length: number): number {
+  return length * Math.cos(ARROW_SPREAD);
+}
+
+/** 単位ベクトルを返す。長さ 0 なら null。 */
+function directionTo(from: Point, to: Point): Point | null {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) {
+    return null;
+  }
+  return { x: dx / length, y: dy / length };
+}
+
+/** 端の点を、隣の点へ向かって `distance` だけ動かした位置。 */
+function pullBack(tip: Point, towards: Point, distance: number): Point | null {
+  const direction = directionTo(tip, towards);
+  if (direction === null) {
+    return null;
+  }
+  // 区間より長く引っ込めて線が裏返らないよう、区間の長さで頭打ちにする
+  const limit = Math.hypot(towards.x - tip.x, towards.y - tip.y);
+  const moved = Math.min(distance, limit * 0.9);
+  return {
+    x: tip.x + direction.x * moved,
+    y: tip.y + direction.y * moved,
+  };
+}
+
+/**
+ * 経路の指定した端を、線の向きに沿って `distance` だけ短くする。
+ *
+ * 端に印を描くとき、線がその下まで伸びていると印の形が崩れる。
+ * 線を印の手前で止めるために使う。印そのものは元の経路に対して描くので、
+ * 先端の位置はアイテムの境界のまま変わらない。
+ */
+export function trimPath(
+  path: ConnectorPath,
+  end: "from" | "to",
+  distance: number,
+): ConnectorPath {
+  if (distance <= 0) {
+    return path;
+  }
+
+  if (path.kind === "curve") {
+    // 曲線の端の接線は端と手前の制御点を結ぶ向きなので、それに沿って戻す
+    const tip = end === "to" ? path.to : path.from;
+    const control = end === "to" ? path.control2 : path.control1;
+    const moved = pullBack(tip, control, distance);
+    if (moved === null) {
+      return path;
+    }
+    return end === "to" ? { ...path, to: moved } : { ...path, from: moved };
+  }
+
+  const points = [...path.points];
+  const tipIndex = end === "to" ? points.length - 1 : 0;
+  const nextIndex = end === "to" ? points.length - 2 : 1;
+  const tip = points[tipIndex];
+  const next = points[nextIndex];
+  if (tip === undefined || next === undefined) {
+    return path;
+  }
+  const moved = pullBack(tip, next, distance);
+  if (moved === null) {
+    return path;
+  }
+  points[tipIndex] = moved;
+  return { kind: "polyline", points };
+}
