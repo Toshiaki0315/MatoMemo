@@ -198,3 +198,36 @@ describe("drawSelectionOutline", () => {
     expect(mock.callsOf("ellipse")).toHaveLength(1);
   });
 });
+
+describe("drawItem: 編集中のテキストを隠す", () => {
+  it("付箋のテキストを描かない", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createStickyNote({ id: "s", x: 0, y: 0, text: "メモ" }),
+      { hideText: true },
+    );
+    expect(mock.callsOf("fillText")).toHaveLength(0);
+    // 付箋そのものは描く
+    expect(mock.callsOf("roundRect")).toHaveLength(1);
+  });
+
+  it("図形のテキストを描かない", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0, text: "原因" }),
+      { hideText: true },
+    );
+    expect(mock.callsOf("fillText")).toHaveLength(0);
+    expect(mock.callsOf("rect")).toHaveLength(1);
+  });
+
+  it("単体テキストは何も描かない", () => {
+    const mock = createMockContext();
+    drawItem(mock.ctx, createText({ id: "t", x: 0, y: 0, text: "見出し" }), {
+      hideText: true,
+    });
+    expect(mock.calls).toEqual([]);
+  });
+});

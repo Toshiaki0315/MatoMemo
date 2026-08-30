@@ -36,6 +36,8 @@ export interface BoardCanvasProps {
   readonly onActivateItem?: (id: ItemId) => void;
   readonly theme?: CanvasTheme;
   readonly images?: ImageCache;
+  /** 編集中のアイテム。Canvas 側ではそのテキストを描かない。 */
+  readonly editingItemId?: ItemId;
 }
 
 interface Size {
@@ -57,6 +59,7 @@ export function BoardCanvas({
   onActivateItem,
   theme,
   images,
+  editingItemId,
 }: BoardCanvasProps) {
   // ref ではなく state で要素を保持する。要素が挿入された時点で再レンダリングが
   // 走るため、サイズ計測とイベント登録の副作用を素直に書ける。
@@ -136,8 +139,18 @@ export function BoardCanvas({
       selectedIds,
       ...(theme !== undefined ? { theme } : {}),
       ...(images !== undefined ? { images } : {}),
+      ...(editingItemId !== undefined ? { editingItemId } : {}),
     });
-  }, [canvas, size, viewport, board.items, selectedIds, theme, images]);
+  }, [
+    canvas,
+    size,
+    viewport,
+    board.items,
+    selectedIds,
+    theme,
+    images,
+    editingItemId,
+  ]);
 
   // ホイールとドラッグの操作。preventDefault が必要なため React の合成イベント
   // ではなく passive: false のネイティブリスナを使う（macOS のページ全体の

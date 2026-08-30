@@ -20,6 +20,12 @@ export type ImageCache = ReadonlyMap<string, CanvasImageSource>;
 
 export interface DrawItemOptions {
   readonly images?: ImageCache;
+  /**
+   * テキストを描かない。編集中のアイテムに指定する。
+   * 編集用の `<textarea>` を重ねている間に Canvas 側も描くと、
+   * 文字が二重に見えてしまうため。
+   */
+  readonly hideText?: boolean;
 }
 
 /** 付箋・図形の角の丸み。 */
@@ -44,22 +50,27 @@ export function drawItem(
   item: Item,
   options: DrawItemOptions = {},
 ): void {
+  const hideText = options.hideText ?? false;
   switch (item.type) {
     case "sticky":
-      drawSticky(ctx, item);
+      drawSticky(ctx, item, hideText);
       return;
     case "shape":
-      drawShape(ctx, item);
+      drawShape(ctx, item, hideText);
       return;
     case "text":
-      drawText(ctx, item);
+      drawText(ctx, item, hideText);
       return;
     case "image":
       drawImage(ctx, item, options.images);
   }
 }
 
-function drawSticky(ctx: CanvasRenderingContext2D, item: StickyNoteItem): void {
+function drawSticky(
+  ctx: CanvasRenderingContext2D,
+  item: StickyNoteItem,
+  hideText: boolean,
+): void {
   const colors = STICKY_PALETTE[item.color];
 
   ctx.beginPath();
@@ -70,10 +81,16 @@ function drawSticky(ctx: CanvasRenderingContext2D, item: StickyNoteItem): void {
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  drawCenteredText(ctx, item.text, item);
+  if (!hideText) {
+    drawCenteredText(ctx, item.text, item);
+  }
 }
 
-function drawShape(ctx: CanvasRenderingContext2D, item: ShapeItem): void {
+function drawShape(
+  ctx: CanvasRenderingContext2D,
+  item: ShapeItem,
+  hideText: boolean,
+): void {
   ctx.beginPath();
   if (item.shape === "circle") {
     traceEllipse(ctx, item);
@@ -86,11 +103,17 @@ function drawShape(ctx: CanvasRenderingContext2D, item: ShapeItem): void {
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  drawCenteredText(ctx, item.text, item);
+  if (!hideText) {
+    drawCenteredText(ctx, item.text, item);
+  }
 }
 
-function drawText(ctx: CanvasRenderingContext2D, item: TextItem): void {
-  if (item.text === "") {
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  item: TextItem,
+  hideText: boolean,
+): void {
+  if (hideText || item.text === "") {
     return;
   }
   ctx.font = `${item.fontSize}px "${item.fontFamily}", sans-serif`;

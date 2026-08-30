@@ -171,3 +171,27 @@ describe("renderBoard: アイテム", () => {
     expect(mock.callsOf("drawImage")).toHaveLength(1);
   });
 });
+
+describe("renderBoard: 編集中のアイテム", () => {
+  it("編集中のアイテムのテキストは描かない", () => {
+    const mock = createMockContext();
+    const sticky = createStickyNote({ id: "s1", x: 0, y: 0, text: "メモ" });
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      items: [sticky],
+      editingItemId: "s1",
+    });
+    expect(mock.callsOf("fillText")).toHaveLength(0);
+  });
+
+  it("編集中でないアイテムのテキストは描く", () => {
+    const mock = createMockContext();
+    const sticky = createStickyNote({ id: "s1", x: 0, y: 0, text: "メモ" });
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      items: [sticky],
+      editingItemId: "other",
+    });
+    expect(mock.callsOf("fillText")).toHaveLength(1);
+  });
+});

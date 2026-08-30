@@ -40,6 +40,8 @@ export interface RenderBoardOptions {
   readonly items?: readonly Item[];
   readonly selectedIds?: ReadonlySet<ItemId>;
   readonly images?: ImageCache;
+  /** 編集中のアイテム。そのアイテムのテキストは Canvas 側では描かない。 */
+  readonly editingItemId?: ItemId;
 }
 
 /** グリッド線の太さ (px)。ズームしても一定にするため画面座標で描く。 */
@@ -98,10 +100,13 @@ function drawItems(
     dpr * viewport.y,
   );
 
-  const drawOptions =
+  const baseOptions =
     options.images !== undefined ? { images: options.images } : {};
   for (const item of items) {
-    drawItem(ctx, item, drawOptions);
+    drawItem(ctx, item, {
+      ...baseOptions,
+      hideText: item.id === options.editingItemId,
+    });
   }
 
   // 選択枠はすべてのアイテムより前面に描く

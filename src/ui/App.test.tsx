@@ -259,3 +259,156 @@ describe("App: ドラッグ移動", () => {
     });
   });
 });
+
+describe("App: テキスト編集", () => {
+  /** 付箋を 1 枚追加し、その画面上の中心座標を返す。 */
+  function addStickyAndCenter() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const item = store.getState().board.items[0];
+    return {
+      id: item?.id ?? "",
+      x: (item?.x ?? 0) + (item?.width ?? 0) / 2,
+      y: (item?.y ?? 0) + (item?.height ?? 0) / 2,
+    };
+  }
+
+  it("ダブルクリックで編集欄が開く", () => {
+    renderApp();
+    const center = addStickyAndCenter();
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
+  });
+
+  it("編集していないときは編集欄を出さない", () => {
+    renderApp();
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+
+  it("入力するとアイテムのテキストが変わる", () => {
+    renderApp();
+    const center = addStickyAndCenter();
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    fireEvent.change(screen.getByLabelText("アイテムのテキスト"), {
+      target: { value: "打ち合わせメモ" },
+    });
+    expect(store.getState().board.items[0]).toMatchObject({
+      text: "打ち合わせメモ",
+    });
+  });
+
+  it("Escape で編集欄が閉じる", () => {
+    renderApp();
+    const center = addStickyAndCenter();
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    fireEvent.keyDown(screen.getByLabelText("アイテムのテキスト"), {
+      key: "Escape",
+    });
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+
+  it("他のアイテムを選ぶと編集欄が閉じる", () => {
+    renderApp();
+    const center = addStickyAndCenter();
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    // 空白部分をクリックする
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: 5,
+      clientY: 5,
+    });
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+
+  it("単体テキストも編集できる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    const item = store.getState().board.items[0];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
+  });
+
+  it("図形もテキストを編集できる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "円" }));
+    const item = store.getState().board.items[0];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + (item?.width ?? 0) / 2,
+      clientY: (item?.y ?? 0) + (item?.height ?? 0) / 2,
+    });
+    expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
+  });
+});
+
+describe("App: フォント設定", () => {
+  it("テキストアイテムを選ぶとフォント設定が出る", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    expect(
+      screen.getByRole("group", { name: "テキストの設定" }),
+    ).toBeInTheDocument();
+  });
+
+  it("付箋を選んでもフォント設定は出さない", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    expect(
+      screen.queryByRole("group", { name: "テキストの設定" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("何も選んでいなければ出さない", () => {
+    renderApp();
+    expect(
+      screen.queryByRole("group", { name: "テキストの設定" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("複数選択中は出さない", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    act(() =>
+      store
+        .getState()
+        .selectMany(store.getState().board.items.map((item) => item.id)),
+    );
+    expect(
+      screen.queryByRole("group", { name: "テキストの設定" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("フォントを変えるとアイテムに反映される", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    fireEvent.change(screen.getByLabelText("フォント"), {
+      target: { value: "Menlo" },
+    });
+    expect(store.getState().board.items[0]).toMatchObject({
+      fontFamily: "Menlo",
+    });
+  });
+
+  it("サイズを変えるとアイテムに反映される", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    fireEvent.change(screen.getByLabelText("サイズ"), {
+      target: { value: "48" },
+    });
+    expect(store.getState().board.items[0]).toMatchObject({ fontSize: 48 });
+  });
+});

@@ -1,12 +1,14 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   createShape,
   createStickyNote,
   createText,
+  type Item,
   type ItemId,
   type ShapeKind,
   type StickyColor,
 } from "../domain/board";
+import { findItem } from "../domain/boardOps";
 import { rectCenter, type Point } from "../domain/geometry";
 import {
   clampScale,
@@ -16,6 +18,8 @@ import {
 } from "../domain/viewport";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas } from "./BoardCanvas";
+import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
+import { TextPropertiesPanel } from "./TextPropertiesPanel";
 import { Toolbar } from "./Toolbar";
 
 /** ズームボタン 1 回あたりの倍率。 */
@@ -33,6 +37,14 @@ export interface AppProps {
   readonly store?: BoardStore;
 }
 
+/** テキストを内包できるアイテムか。 */
+function isTextEditable(item: Item | undefined): item is TextEditableItem {
+  return (
+    item !== undefined &&
+    (item.type === "sticky" || item.type === "shape" || item.type === "text")
+  );
+}
+
 export function App({ store = useBoardStore }: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
@@ -44,6 +56,17 @@ export function App({ store = useBoardStore }: AppProps = {}) {
   const selectOnly = store((state) => state.selectOnly);
   const toggleSelection = store((state) => state.toggleSelection);
   const clearSelection = store((state) => state.clearSelection);
+  const replaceItem = store((state) => state.replaceItem);
+
+  /** 編集中のアイテム。null なら編集していない。 */
+  const [editingId, setEditingId] = useState<ItemId | null>(null);
+  const editingItem = editingId === null ? undefined : findItem(board, editingId);
+
+  /** テキストアイテムを 1 つだけ選んでいるときにフォント設定を出す。 */
+  const soleSelected =
+    selectedIds.size === 1
+      ? findItem(board, [...selectedIds][0] as ItemId)
+      : undefined;
 
   /**
    * 新しいアイテムを置く位置。
@@ -82,8 +105,19 @@ export function App({ store = useBoardStore }: AppProps = {}) {
     addItem((id) => createText({ id, x, y, text: "テキスト" }));
   }, [addItem, nextItemPosition]);
 
+  const handleActivateItem = useCallback(
+    (id: ItemId) => {
+      if (isTextEditable(findItem(board, id))) {
+        setEditingId(id);
+      }
+    },
+    [board],
+  );
+
   const handleSelect = useCallback(
     (id: ItemId | null, additive: boolean) => {
+      // 別のアイテムを触ったら編集を終える
+      setEditingId((current) => (current === id ? current : null));
       if (id === null) {
         clearSelection();
         return;
@@ -123,7 +157,30 @@ export function App({ store = useBoardStore }: AppProps = {}) {
         onSelect={handleSelect}
         onMoveSelected={moveSelected}
         onDeleteSelected={removeSelected}
+        onActivateItem={handleActivateItem}
+        {...(editingId !== null ? { editingItemId: editingId } : {})}
       />
+
+      {isTextEditable(editingItem) ? (
+        <ItemTextEditor
+          item={editingItem}
+          viewport={viewport}
+          onChangeText={(text) => replaceItem({ ...editingItem, text })}
+          onClose={() => setEditingId(null)}
+        />
+      ) : null}
+
+      {soleSelected?.type === "text" ? (
+        <TextPropertiesPanel
+          item={soleSelected}
+          onChangeFontFamily={(fontFamily) =>
+            replaceItem({ ...soleSelected, fontFamily })
+          }
+          onChangeFontSize={(fontSize) =>
+            replaceItem({ ...soleSelected, fontSize })
+          }
+        />
+      ) : null}
 
       <Toolbar
         onAddSticky={handleAddSticky}

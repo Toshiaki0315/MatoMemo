@@ -542,3 +542,25 @@ describe("BoardCanvas: 再レンダリングを挟むドラッグ", () => {
     expect(latestX).toBe(40);
   });
 });
+
+describe("BoardCanvas: 編集中のアイテム", () => {
+  it("編集中のアイテムのテキストは Canvas に描かない", () => {
+    const board = addItem(
+      createBoard({ id: "b1" }),
+      createStickyNote({ id: "s1", x: 0, y: 0, text: "メモ" }),
+    );
+    render(
+      <BoardCanvas
+        board={board}
+        viewport={createViewport()}
+        selectedIds={new Set()}
+        onViewportChange={vi.fn()}
+        onSelect={vi.fn()}
+        onMoveSelected={vi.fn()}
+        onDeleteSelected={vi.fn()}
+        editingItemId="s1"
+      />,
+    );
+    expect(canvasStub.mock.callsOf("fillText")).toHaveLength(0);
+  });
+});
