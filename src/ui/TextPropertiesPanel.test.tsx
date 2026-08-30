@@ -1,27 +1,27 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { createText } from "../domain/board";
+import { createShape, createStickyNote, createText } from "../domain/board";
 import {
   FONT_FAMILIES,
   FONT_SIZES,
   TextPropertiesPanel,
 } from "./TextPropertiesPanel";
 
-function renderPanel(item = createText({ id: "t", x: 0, y: 0 })) {
-  const onChangeFontFamily = vi.fn();
-  const onChangeFontSize = vi.fn();
-  render(
-    <TextPropertiesPanel
-      item={item}
-      onChangeFontFamily={onChangeFontFamily}
-      onChangeFontSize={onChangeFontSize}
-    />,
-  );
+function renderPanel(
+  item: Parameters<typeof TextPropertiesPanel>[0]["item"] = createText({
+    id: "t",
+    x: 0,
+    y: 0,
+  }),
+) {
+  const onChange = vi.fn();
+  render(<TextPropertiesPanel item={item} onChange={onChange} />);
   return {
-    fontSelect: screen.getByLabelText("フォント") as HTMLSelectElement,
-    sizeSelect: screen.getByLabelText("サイズ") as HTMLSelectElement,
-    onChangeFontFamily,
-    onChangeFontSize,
+    fontSelect: screen.queryByLabelText("フォント") as HTMLSelectElement,
+    sizeSelect: screen.queryByLabelText("サイズ") as HTMLSelectElement,
+    alignSelect: screen.getByLabelText("横位置") as HTMLSelectElement,
+    verticalSelect: screen.getByLabelText("縦位置") as HTMLSelectElement,
+    onChange,
   };
 }
 
@@ -44,16 +44,20 @@ describe("TextPropertiesPanel", () => {
     expect(sizeSelect.options).toHaveLength(FONT_SIZES.length);
   });
 
-  it("フォントを変えると通知する", () => {
-    const { fontSelect, onChangeFontFamily } = renderPanel();
+  it("フォントを変えると更新後のアイテムを通知する", () => {
+    const { fontSelect, onChange } = renderPanel();
     fireEvent.change(fontSelect, { target: { value: "Menlo" } });
-    expect(onChangeFontFamily).toHaveBeenCalledWith("Menlo");
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ fontFamily: "Menlo" }),
+    );
   });
 
   it("サイズを変えると数値で通知する", () => {
-    const { sizeSelect, onChangeFontSize } = renderPanel();
+    const { sizeSelect, onChange } = renderPanel();
     fireEvent.change(sizeSelect, { target: { value: "48" } });
-    expect(onChangeFontSize).toHaveBeenCalledWith(48);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ fontSize: 48 }),
+    );
   });
 
   it("一覧にないフォントも選択肢に補う（保存ファイル由来の値）", () => {
@@ -70,5 +74,54 @@ describe("TextPropertiesPanel", () => {
     );
     expect(sizeSelect.value).toBe("37");
     expect(sizeSelect.options).toHaveLength(FONT_SIZES.length + 1);
+  });
+});
+
+describe("TextPropertiesPanel: テキストの配置", () => {
+  it("現在の横位置を選択状態にする", () => {
+    expect(renderPanel().alignSelect.value).toBe("left");
+  });
+
+  it("現在の縦位置を選択状態にする", () => {
+    expect(renderPanel().verticalSelect.value).toBe("top");
+  });
+
+  it("横位置を変えると通知する", () => {
+    const { alignSelect, onChange } = renderPanel();
+    fireEvent.change(alignSelect, { target: { value: "right" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ align: "right" }),
+    );
+  });
+
+  it("縦位置を変えると通知する", () => {
+    const { verticalSelect, onChange } = renderPanel();
+    fireEvent.change(verticalSelect, { target: { value: "bottom" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ verticalAlign: "bottom" }),
+    );
+  });
+
+  it("付箋にも配置の設定を出す", () => {
+    const { alignSelect, verticalSelect } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0 }),
+    );
+    expect(alignSelect.value).toBe("center");
+    expect(verticalSelect.value).toBe("middle");
+  });
+
+  it("付箋にはフォントの設定を出さない", () => {
+    const { fontSelect, sizeSelect } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0 }),
+    );
+    expect(fontSelect).toBeNull();
+    expect(sizeSelect).toBeNull();
+  });
+
+  it("図形にも配置の設定を出す", () => {
+    const { alignSelect } = renderPanel(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    );
+    expect(alignSelect).toBeInTheDocument();
   });
 });

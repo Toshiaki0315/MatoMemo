@@ -32,6 +32,20 @@ export type ShapeKind = "rectangle" | "circle";
 /** コネクタの種類。 */
 export type ConnectorKind = "straight" | "polyline" | "curved";
 
+/** テキストの横位置。 */
+export const TEXT_ALIGNS = ["left", "center", "right"] as const;
+export type TextAlign = (typeof TEXT_ALIGNS)[number];
+
+/** テキストの縦位置。 */
+export const TEXT_VERTICAL_ALIGNS = ["top", "middle", "bottom"] as const;
+export type TextVerticalAlign = (typeof TEXT_VERTICAL_ALIGNS)[number];
+
+/** テキストを内包するアイテムが共通で持つ配置の設定。 */
+export interface TextAlignment {
+  readonly align: TextAlign;
+  readonly verticalAlign: TextVerticalAlign;
+}
+
 /** 既定のボード名。 */
 export const DEFAULT_BOARD_NAME = "無題のボード";
 
@@ -63,21 +77,21 @@ export interface ItemBase {
 }
 
 /** 付箋。 */
-export interface StickyNoteItem extends ItemBase {
+export interface StickyNoteItem extends ItemBase, TextAlignment {
   readonly type: "sticky";
   readonly text: string;
   readonly color: StickyColor;
 }
 
 /** 図形（矩形・円）。テキストを内包できる。 */
-export interface ShapeItem extends ItemBase {
+export interface ShapeItem extends ItemBase, TextAlignment {
   readonly type: "shape";
   readonly shape: ShapeKind;
   readonly text: string;
 }
 
 /** 単体のテキスト。 */
-export interface TextItem extends ItemBase {
+export interface TextItem extends ItemBase, TextAlignment {
   readonly type: "text";
   readonly text: string;
   readonly fontFamily: string;
@@ -127,6 +141,37 @@ interface ItemBaseParams {
   readonly height?: number;
 }
 
+/** テキストの配置を指定する引数。 */
+interface TextAlignmentParams {
+  readonly align?: TextAlign;
+  readonly verticalAlign?: TextVerticalAlign;
+}
+
+/**
+ * 配置の既定値を決める。
+ * 付箋と図形は中央、単体テキストは左上を既定とし、
+ * それぞれの見た目の慣習に合わせる。
+ */
+function alignmentOf(
+  params: TextAlignmentParams,
+  fallback: TextAlignment,
+): TextAlignment {
+  return {
+    align: params.align ?? fallback.align,
+    verticalAlign: params.verticalAlign ?? fallback.verticalAlign,
+  };
+}
+
+const BOXED_TEXT_ALIGNMENT: TextAlignment = {
+  align: "center",
+  verticalAlign: "middle",
+};
+
+const STANDALONE_TEXT_ALIGNMENT: TextAlignment = {
+  align: "left",
+  verticalAlign: "top",
+};
+
 export function createBoard(params: {
   readonly id: string;
   readonly name?: string;
@@ -140,10 +185,11 @@ export function createBoard(params: {
 }
 
 export function createStickyNote(
-  params: ItemBaseParams & {
-    readonly text?: string;
-    readonly color?: StickyColor;
-  },
+  params: ItemBaseParams &
+    TextAlignmentParams & {
+      readonly text?: string;
+      readonly color?: StickyColor;
+    },
 ): StickyNoteItem {
   return {
     id: params.id,
@@ -154,14 +200,16 @@ export function createStickyNote(
     height: params.height ?? DEFAULT_STICKY_SIZE,
     text: params.text ?? "",
     color: params.color ?? "yellow",
+    ...alignmentOf(params, BOXED_TEXT_ALIGNMENT),
   };
 }
 
 export function createShape(
-  params: ItemBaseParams & {
-    readonly shape: ShapeKind;
-    readonly text?: string;
-  },
+  params: ItemBaseParams &
+    TextAlignmentParams & {
+      readonly shape: ShapeKind;
+      readonly text?: string;
+    },
 ): ShapeItem {
   return {
     id: params.id,
@@ -172,15 +220,17 @@ export function createShape(
     width: params.width ?? DEFAULT_SHAPE_SIZE,
     height: params.height ?? DEFAULT_SHAPE_SIZE,
     text: params.text ?? "",
+    ...alignmentOf(params, BOXED_TEXT_ALIGNMENT),
   };
 }
 
 export function createText(
-  params: ItemBaseParams & {
-    readonly text?: string;
-    readonly fontFamily?: string;
-    readonly fontSize?: number;
-  },
+  params: ItemBaseParams &
+    TextAlignmentParams & {
+      readonly text?: string;
+      readonly fontFamily?: string;
+      readonly fontSize?: number;
+    },
 ): TextItem {
   return {
     id: params.id,
@@ -192,6 +242,7 @@ export function createText(
     text: params.text ?? "",
     fontFamily: params.fontFamily ?? DEFAULT_FONT_FAMILY,
     fontSize: params.fontSize ?? DEFAULT_FONT_SIZE,
+    ...alignmentOf(params, STANDALONE_TEXT_ALIGNMENT),
   };
 }
 

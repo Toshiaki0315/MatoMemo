@@ -11,12 +11,17 @@
 
 import {
   STICKY_COLORS,
+  TEXT_ALIGNS,
+  TEXT_VERTICAL_ALIGNS,
   type Board,
   type Connector,
   type ConnectorKind,
   type Item,
   type ShapeKind,
   type StickyColor,
+  type TextAlign,
+  type TextAlignment,
+  type TextVerticalAlign,
 } from "./board";
 
 /** 保存ファイルのスキーマバージョン。破壊的変更のたびに増やす。 */
@@ -119,6 +124,52 @@ function readEnum<T extends string>(
   return value as T;
 }
 
+/** 配置の既定値。項目が無い古いファイルではこれを使う。 */
+const BOXED_ALIGNMENT: TextAlignment = {
+  align: "center",
+  verticalAlign: "middle",
+};
+const STANDALONE_ALIGNMENT: TextAlignment = {
+  align: "left",
+  verticalAlign: "top",
+};
+
+/**
+ * テキストの配置を読み出す。
+ * 後から追加した項目なので、無い場合は種類ごとの既定値で補う。
+ */
+function readAlignment(
+  source: Record<string, unknown>,
+  fallback: TextAlignment,
+  path: string,
+  issues: Issues,
+): TextAlignment {
+  return {
+    align:
+      source["align"] === undefined
+        ? fallback.align
+        : readEnum<TextAlign>(
+            source,
+            "align",
+            TEXT_ALIGNS,
+            fallback.align,
+            path,
+            issues,
+          ),
+    verticalAlign:
+      source["verticalAlign"] === undefined
+        ? fallback.verticalAlign
+        : readEnum<TextVerticalAlign>(
+            source,
+            "verticalAlign",
+            TEXT_VERTICAL_ALIGNS,
+            fallback.verticalAlign,
+            path,
+            issues,
+          ),
+  };
+}
+
 /** 1 件のアイテムを検証する。復元できない場合は null を返す。 */
 function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
   if (!isRecord(raw)) {
@@ -138,6 +189,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "sticky":
       return {
         ...base,
+        ...readAlignment(raw, BOXED_ALIGNMENT, path, issues),
         type: "sticky",
         text: readString(raw, "text", path, issues),
         color: readEnum<StickyColor>(
@@ -152,6 +204,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "shape":
       return {
         ...base,
+        ...readAlignment(raw, BOXED_ALIGNMENT, path, issues),
         type: "shape",
         shape: readEnum<ShapeKind>(
           raw,
@@ -166,6 +219,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
     case "text":
       return {
         ...base,
+        ...readAlignment(raw, STANDALONE_ALIGNMENT, path, issues),
         type: "text",
         text: readString(raw, "text", path, issues),
         fontFamily: readString(raw, "fontFamily", path, issues),

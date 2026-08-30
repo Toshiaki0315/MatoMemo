@@ -366,12 +366,14 @@ describe("App: フォント設定", () => {
     ).toBeInTheDocument();
   });
 
-  it("付箋を選んでもフォント設定は出さない", () => {
+  it("付箋を選ぶと配置の設定は出るがフォントの設定は出ない", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
     expect(
-      screen.queryByRole("group", { name: "テキストの設定" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("group", { name: "テキストの設定" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("横位置")).toBeInTheDocument();
+    expect(screen.queryByLabelText("フォント")).not.toBeInTheDocument();
   });
 
   it("何も選んでいなければ出さない", () => {

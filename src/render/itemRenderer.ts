@@ -6,7 +6,13 @@
  */
 
 import type { Item, ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
-import type { ImageItem } from "../domain/board";
+import type {
+  ImageItem,
+  TextAlign,
+  TextAlignment,
+  TextVerticalAlign,
+} from "../domain/board";
+import type { Rect } from "../domain/geometry";
 import {
   HANDLE_SIZE,
   RESIZE_HANDLES,
@@ -87,7 +93,7 @@ function drawSticky(
   ctx.stroke();
 
   if (!hideText) {
-    drawCenteredText(ctx, item.text, item);
+    drawBoxedText(ctx, item.text, item);
   }
 }
 
@@ -109,7 +115,7 @@ function drawShape(
   ctx.stroke();
 
   if (!hideText) {
-    drawCenteredText(ctx, item.text, item);
+    drawBoxedText(ctx, item.text, item);
   }
 }
 
@@ -123,7 +129,7 @@ function drawText(
   }
   ctx.font = `${item.fontSize}px "${item.fontFamily}", sans-serif`;
   ctx.fillStyle = ITEM_TEXT_COLOR;
-  ctx.textAlign = "left";
+  ctx.textAlign = item.align;
   ctx.textBaseline = "top";
 
   const lineHeight = item.fontSize * LINE_HEIGHT_RATIO;
@@ -132,9 +138,46 @@ function drawText(
     item.width,
     (text) => ctx.measureText(text).width,
   );
+  const x = horizontalAnchor(item, item.align, 0);
+  const top = verticalStart(item, item.verticalAlign, lines.length, lineHeight, 0);
   lines.forEach((line, index) => {
-    ctx.fillText(line, item.x, item.y + index * lineHeight);
+    ctx.fillText(line, x, top + index * lineHeight);
   });
+}
+
+/** 横方向の基準位置。`ctx.textAlign` と対で使う。 */
+function horizontalAnchor(
+  bounds: Rect,
+  align: TextAlign,
+  padding: number,
+): number {
+  switch (align) {
+    case "left":
+      return bounds.x + padding;
+    case "right":
+      return bounds.x + bounds.width - padding;
+    default:
+      return bounds.x + bounds.width / 2;
+  }
+}
+
+/** 1 行目の上端。textBaseline は "top" を前提とする。 */
+function verticalStart(
+  bounds: Rect,
+  verticalAlign: TextVerticalAlign,
+  lineCount: number,
+  lineHeight: number,
+  padding: number,
+): number {
+  const textHeight = lineCount * lineHeight;
+  switch (verticalAlign) {
+    case "top":
+      return bounds.y + padding;
+    case "bottom":
+      return bounds.y + bounds.height - padding - textHeight;
+    default:
+      return bounds.y + (bounds.height - textHeight) / 2;
+  }
 }
 
 function drawImage(
@@ -157,37 +200,42 @@ function drawImage(
   ctx.drawImage(bitmap, item.x, item.y, item.width, item.height);
 }
 
-/** アイテムの中央にテキストを描く（付箋・図形の内部テキスト）。 */
-function drawCenteredText(
+/** 枠の中にテキストを描く（付箋・図形の内部テキスト）。 */
+function drawBoxedText(
   ctx: CanvasRenderingContext2D,
   text: string,
-  bounds: { x: number; y: number; width: number; height: number },
+  item: Rect & TextAlignment,
 ): void {
   if (text === "") {
     return;
   }
   ctx.font = `${ITEM_FONT_SIZE}px "${ITEM_FONT_FAMILY}", sans-serif`;
   ctx.fillStyle = ITEM_TEXT_COLOR;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.textAlign = item.align;
+  ctx.textBaseline = "top";
 
   const lineHeight = ITEM_FONT_SIZE * LINE_HEIGHT_RATIO;
   const maxLines = Math.max(
     1,
-    Math.floor((bounds.height - TEXT_PADDING * 2) / lineHeight),
+    Math.floor((item.height - TEXT_PADDING * 2) / lineHeight),
   );
   const lines = wrapText(
     text,
-    bounds.width - TEXT_PADDING * 2,
+    item.width - TEXT_PADDING * 2,
     (value) => ctx.measureText(value).width,
     maxLines,
   );
 
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
-  const firstLineY = centerY - ((lines.length - 1) * lineHeight) / 2;
+  const x = horizontalAnchor(item, item.align, TEXT_PADDING);
+  const top = verticalStart(
+    item,
+    item.verticalAlign,
+    lines.length,
+    lineHeight,
+    TEXT_PADDING,
+  );
   lines.forEach((line, index) => {
-    ctx.fillText(line, centerX, firstLineY + index * lineHeight);
+    ctx.fillText(line, x, top + index * lineHeight);
   });
 }
 

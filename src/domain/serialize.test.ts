@@ -495,3 +495,59 @@ describe("parseBoardFile: 矢印の項目", () => {
     );
   });
 });
+
+describe("parseBoardFile: テキストの配置", () => {
+  /** items[0]（付箋）の配置を差し替えた JSON を作る。 */
+  function withAlignment(fields: Record<string, unknown>): string {
+    return boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      b["items"] = [{ ...items[0], ...fields }];
+      b["connectors"] = [];
+    });
+  }
+
+  it("配置を復元する", () => {
+    const board = parseBoardFile(
+      withAlignment({ align: "right", verticalAlign: "bottom" }),
+    );
+    expect(board.items[0]).toMatchObject({
+      align: "right",
+      verticalAlign: "bottom",
+    });
+  });
+
+  it("項目が無い古いファイルは種類ごとの既定値で読む", () => {
+    const json = boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      b["items"] = items.map((item) => {
+        const {
+          align: _a,
+          verticalAlign: _v,
+          ...rest
+        } = item as Record<string, unknown>;
+        return rest;
+      });
+      b["connectors"] = [];
+    });
+    const board = parseBoardFile(json);
+    // 付箋は中央寄せ
+    expect(board.items[0]).toMatchObject({
+      align: "center",
+      verticalAlign: "middle",
+    });
+    // 単体テキストは左上寄せ
+    expect(board.items[2]).toMatchObject({
+      align: "left",
+      verticalAlign: "top",
+    });
+  });
+
+  it("未知の値はエラーにする", () => {
+    expect(catchError(withAlignment({ align: "justify" })).issues).toContain(
+      'board.items[0].align が未知の値です: "justify"',
+    );
+    expect(
+      catchError(withAlignment({ verticalAlign: "baseline" })).issues,
+    ).toContain('board.items[0].verticalAlign が未知の値です: "baseline"');
+  });
+});

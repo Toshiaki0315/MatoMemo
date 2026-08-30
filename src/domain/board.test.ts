@@ -51,6 +51,8 @@ describe("createStickyNote", () => {
       height: DEFAULT_STICKY_SIZE,
       text: "",
       color: "yellow",
+      align: "center",
+      verticalAlign: "middle",
     });
   });
 
@@ -84,6 +86,8 @@ describe("createShape", () => {
       width: DEFAULT_SHAPE_SIZE,
       height: DEFAULT_SHAPE_SIZE,
       text: "",
+      align: "center",
+      verticalAlign: "middle",
     });
   });
 
@@ -120,6 +124,8 @@ describe("createText", () => {
       text: "",
       fontFamily: DEFAULT_FONT_FAMILY,
       fontSize: DEFAULT_FONT_SIZE,
+      align: "left",
+      verticalAlign: "top",
     });
   });
 
@@ -242,5 +248,42 @@ describe("createConnector", () => {
         arrow: true,
       }).arrow,
     ).toBe(true);
+  });
+});
+
+describe("テキストの配置", () => {
+  it("付箋と図形は中央寄せを既定にする", () => {
+    expect(createStickyNote({ id: "s", x: 0, y: 0 })).toMatchObject({
+      align: "center",
+      verticalAlign: "middle",
+    });
+    expect(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    ).toMatchObject({ align: "center", verticalAlign: "middle" });
+  });
+
+  it("単体テキストは左上寄せを既定にする", () => {
+    expect(createText({ id: "t", x: 0, y: 0 })).toMatchObject({
+      align: "left",
+      verticalAlign: "top",
+    });
+  });
+
+  it("配置を指定できる", () => {
+    expect(
+      createStickyNote({
+        id: "s",
+        x: 0,
+        y: 0,
+        align: "right",
+        verticalAlign: "bottom",
+      }),
+    ).toMatchObject({ align: "right", verticalAlign: "bottom" });
+  });
+
+  it("片方だけ指定しても、もう片方は既定になる", () => {
+    expect(
+      createText({ id: "t", x: 0, y: 0, align: "center" }),
+    ).toMatchObject({ align: "center", verticalAlign: "top" });
   });
 });

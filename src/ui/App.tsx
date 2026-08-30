@@ -505,16 +505,8 @@ export function App({
         />
       ) : null}
 
-      {soleSelected?.type === "text" ? (
-        <TextPropertiesPanel
-          item={soleSelected}
-          onChangeFontFamily={(fontFamily) =>
-            replaceItem({ ...soleSelected, fontFamily })
-          }
-          onChangeFontSize={(fontSize) =>
-            replaceItem({ ...soleSelected, fontSize })
-          }
-        />
+      {isTextEditable(soleSelected) ? (
+        <TextPropertiesPanel item={soleSelected} onChange={replaceItem} />
       ) : null}
 
       <Toolbar

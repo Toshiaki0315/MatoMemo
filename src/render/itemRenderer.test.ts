@@ -270,3 +270,81 @@ describe("drawResizeHandles", () => {
     expect(size).toBe(2);
   });
 });
+
+describe("drawItem: テキストの配置", () => {
+  /** 100x100 の付箋にテキストを入れ、配置を指定して描く。 */
+  function drawSticky(
+    align: "left" | "center" | "right",
+    verticalAlign: "top" | "middle" | "bottom",
+  ) {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createStickyNote({
+        id: "s",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        text: "文",
+        align,
+        verticalAlign,
+      }),
+    );
+    const call = mock.callsOf("fillText")[0];
+    return { ctx: mock.ctx, x: call?.args[1] as number, y: call?.args[2] as number };
+  }
+
+  it("横位置を Canvas の textAlign に反映する", () => {
+    expect(drawSticky("left", "middle").ctx.textAlign).toBe("left");
+    expect(drawSticky("right", "middle").ctx.textAlign).toBe("right");
+    expect(drawSticky("center", "middle").ctx.textAlign).toBe("center");
+  });
+
+  it("左寄せは余白の分だけ左端から離す", () => {
+    expect(drawSticky("left", "middle").x).toBe(12);
+  });
+
+  it("右寄せは余白の分だけ右端から離す", () => {
+    expect(drawSticky("right", "middle").x).toBe(88);
+  });
+
+  it("中央寄せは中心に置く", () => {
+    expect(drawSticky("center", "middle").x).toBe(50);
+  });
+
+  it("上寄せは余白の分だけ上端から離す", () => {
+    expect(drawSticky("center", "top").y).toBe(12);
+  });
+
+  it("下寄せは下端側に置く", () => {
+    const bottom = drawSticky("center", "bottom").y;
+    const top = drawSticky("center", "top").y;
+    expect(bottom).toBeGreaterThan(top);
+  });
+
+  it("中央寄せは上下の中間に置く", () => {
+    const middle = drawSticky("center", "middle").y;
+    expect(middle).toBeGreaterThan(drawSticky("center", "top").y);
+    expect(middle).toBeLessThan(drawSticky("center", "bottom").y);
+  });
+
+  it("単体テキストにも配置が効く", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createText({
+        id: "t",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        text: "文",
+        align: "right",
+        verticalAlign: "bottom",
+      }),
+    );
+    expect(mock.ctx.textAlign).toBe("right");
+    expect(mock.callsOf("fillText")[0]?.args[1]).toBe(200);
+  });
+});

@@ -14,6 +14,13 @@ import { ITEM_TEXT_COLOR, SELECTION_COLOR } from "../render/palette";
 /** テキストを内包できるアイテム。 */
 export type TextEditableItem = StickyNoteItem | ShapeItem | TextItem;
 
+/** 縦位置を flex の指定に読み替える。 */
+const VERTICAL_ALIGN_TO_FLEX: Record<string, string> = {
+  top: "flex-start",
+  middle: "center",
+  bottom: "flex-end",
+};
+
 /** 付箋・図形の内部テキストのフォント（描画側と揃える）。 */
 const ITEM_FONT_SIZE = 16;
 const ITEM_FONT_FAMILY = "Hiragino Sans";
@@ -74,8 +81,8 @@ export function ItemTextEditor({
         top: topLeft.y,
         width: item.width * viewport.scale,
         height: item.height * viewport.scale,
-        // 単体テキストは上寄せ、付箋・図形は中央寄せで描画側と揃える
-        alignItems: isStandaloneText ? "flex-start" : "center",
+        // 描画側と同じ配置にする
+        alignItems: VERTICAL_ALIGN_TO_FLEX[item.verticalAlign],
         padding: isStandaloneText ? 0 : TEXT_PADDING * viewport.scale,
       }}
     >
@@ -94,7 +101,7 @@ export function ItemTextEditor({
           fontSize: fontSize * viewport.scale,
           fontFamily: `"${fontFamily}", sans-serif`,
           lineHeight: LINE_HEIGHT_RATIO,
-          textAlign: isStandaloneText ? "left" : "center",
+          textAlign: item.align,
           color: ITEM_TEXT_COLOR,
           // 付箋の淡い色の上でも見えるよう、カーソルの色を明示する
           caretColor: SELECTION_COLOR,
