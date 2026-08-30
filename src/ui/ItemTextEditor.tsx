@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
 import { toScreen, type Viewport } from "../domain/viewport";
-import { ITEM_TEXT_COLOR } from "../render/palette";
+import { ITEM_TEXT_COLOR, SELECTION_COLOR } from "../render/palette";
 
 /** テキストを内包できるアイテム。 */
 export type TextEditableItem = StickyNoteItem | ShapeItem | TextItem;
@@ -35,28 +35,36 @@ export function ItemTextEditor({
 }: ItemTextEditorProps) {
   const [textarea, setTextarea] = useState<HTMLTextAreaElement | null>(null);
 
-  // 開いた直後に入力できるようフォーカスし、全選択して置き換えやすくする。
+  const isStandaloneText = item.type === "text";
+  const topLeft = toScreen(viewport, { x: item.x, y: item.y });
+  const fontSize = isStandaloneText ? item.fontSize : ITEM_FONT_SIZE;
+  const fontFamily = isStandaloneText ? item.fontFamily : ITEM_FONT_FAMILY;
+
+  /**
+   * 開いた直後に入力できるようフォーカスし、カーソルを末尾に置く。
+   *
+   * 全選択にすると、既存の文章に書き足したいときに最初の一打で消えてしまう。
+   * 末尾に置けば、続きを打つのも選び直して消すのもできる。
+   */
   useEffect(() => {
     if (textarea === null) {
       return;
     }
     textarea.focus();
-    textarea.select();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
   }, [textarea]);
 
   // 内容に合わせて高さを変え、中央寄せが正しく見えるようにする。
+  // 空でもカーソルが見えるよう、最低 1 行分の高さは確保する。
   useEffect(() => {
     if (textarea === null) {
       return;
     }
     textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [textarea, item.text]);
-
-  const isStandaloneText = item.type === "text";
-  const topLeft = toScreen(viewport, { x: item.x, y: item.y });
-  const fontSize = isStandaloneText ? item.fontSize : ITEM_FONT_SIZE;
-  const fontFamily = isStandaloneText ? item.fontFamily : ITEM_FONT_FAMILY;
+    const lineHeight = fontSize * viewport.scale * LINE_HEIGHT_RATIO;
+    textarea.style.height = `${Math.max(textarea.scrollHeight, lineHeight)}px`;
+  }, [textarea, item.text, fontSize, viewport.scale]);
 
   return (
     <div
@@ -88,6 +96,8 @@ export function ItemTextEditor({
           lineHeight: LINE_HEIGHT_RATIO,
           textAlign: isStandaloneText ? "left" : "center",
           color: ITEM_TEXT_COLOR,
+          // 付箋の淡い色の上でも見えるよう、カーソルの色を明示する
+          caretColor: SELECTION_COLOR,
         }}
       />
     </div>

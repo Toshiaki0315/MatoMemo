@@ -188,7 +188,9 @@ export function App({
 
   const handleAddText = useCallback(() => {
     const { x, y } = nextItemPosition();
-    addItem((id) => createText({ id, x, y, text: "テキスト" }));
+    // 空のまま追加してすぐ編集に入る。仮の文字を入れておくと
+    // 打ち始める前に消す手間がかかるため。
+    setEditingId(addItem((id) => createText({ id, x, y })));
   }, [addItem, nextItemPosition]);
 
   const handleActivateItem = useCallback(
@@ -333,12 +335,24 @@ export function App({
     [connectItems, connectingFrom, connectorArrow, connectorKind],
   );
 
-  /** 接続モードの開始・終了。 */
+  /**
+   * 接続モードの開始・終了。
+   *
+   * 開始時にアイテムを 1 つだけ選んでいれば、それを接続の始点として引き継ぐ。
+   * 「つなぎたいものを選んでから接続ボタンを押す」操作が自然に通るようにする。
+   */
   const toggleConnectMode = useCallback(() => {
-    setConnectMode((current) => !current);
-    setConnectingFrom(null);
-    clearSelection();
-  }, [clearSelection]);
+    const entering = !connectMode;
+    setConnectMode(entering);
+    setConnectingFrom(
+      entering && selectedIds.size === 1
+        ? ([...selectedIds][0] as ItemId)
+        : null,
+    );
+    if (!entering) {
+      clearSelection();
+    }
+  }, [clearSelection, connectMode, selectedIds]);
 
   const handleSelect = useCallback(
     (id: ItemId | null, additive: boolean) => {

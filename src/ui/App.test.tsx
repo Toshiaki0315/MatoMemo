@@ -681,6 +681,9 @@ describe("App: コネクタ", () => {
         });
       }
     });
+    // 選択を外しておく。選択したまま接続モードに入ると、そのアイテムが
+    // 始点として引き継がれる（その挙動は別の describe で確かめる）。
+    act(() => store.getState().clearSelection());
     return store.getState().board.items.map((item) => item.id);
   }
 
@@ -755,6 +758,7 @@ describe("App: コネクタ", () => {
       if (third !== undefined) {
         store.getState().replaceItem({ ...third, x: 0, y: 0 });
       }
+      store.getState().clearSelection();
     });
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
@@ -964,5 +968,78 @@ describe("App: 元に戻す / やり直す", () => {
     // 追加の 1 件だけが残っているので、1 回戻せば空になる
     fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
     expect(store.getState().board.items).toEqual([]);
+  });
+});
+
+describe("App: 選択したまま接続モードに入る", () => {
+  /** 離れた場所に付箋を 2 枚置き、id を返す。 */
+  function addTwoApart() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const first = store.getState().board.items[0];
+    fireEvent.click(screen.getByRole("button", { name: "青の付箋を追加" }));
+    act(() => {
+      const second = store.getState().board.items[1];
+      if (second !== undefined) {
+        store.getState().replaceItem({
+          ...second,
+          x: (first?.x ?? 0) + 400,
+          y: first?.y ?? 0,
+        });
+      }
+    });
+    return store.getState().board.items.map((item) => item.id);
+  }
+
+  function clickItem(index: number) {
+    const item = store.getState().board.items[index];
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+  }
+
+  it("選択したまま接続を押すと、それが始点になる", () => {
+    renderApp();
+    const ids = addTwoApart();
+    // 2 枚目が選択されている状態で接続モードに入る
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    // 相手をクリックするだけで線が引ける
+    clickItem(0);
+    expect(store.getState().board.connectors).toMatchObject([
+      { fromItemId: ids[1], toItemId: ids[0] },
+    ]);
+  });
+
+  it("選択を解除してから押した場合は始点なしで始まる", () => {
+    renderApp();
+    const ids = addTwoApart();
+    act(() => store.getState().clearSelection());
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    clickItem(0);
+    expect(store.getState().board.connectors).toEqual([]);
+    clickItem(1);
+    expect(store.getState().board.connectors).toMatchObject([
+      { fromItemId: ids[0], toItemId: ids[1] },
+    ]);
+  });
+
+  it("複数選択のときは始点を決めない", () => {
+    renderApp();
+    const ids = addTwoApart();
+    act(() => store.getState().selectMany(ids));
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    clickItem(0);
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("接続モードを抜けると選択を解除する", () => {
+    renderApp();
+    addTwoApart();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    expect(store.getState().selectedIds.size).toBe(0);
   });
 });
