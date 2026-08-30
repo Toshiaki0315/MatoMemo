@@ -47,6 +47,7 @@ npm install
 | `npm run test:coverage` | カバレッジ付きでテストを実行 |
 | `npm run typecheck` | TypeScript の型検査 |
 | `npm run tauri:build` | Apple Silicon 向けアプリをビルド |
+| `npm run licenses` | サードパーティライセンス一覧を再生成 |
 
 ビルド成果物は `src-tauri/target/aarch64-apple-darwin/release/bundle/` に出力されます。
 
@@ -80,4 +81,14 @@ src-tauri/    Tauri (Rust) シェル
 
 ## ライセンス
 
-[MIT License](./LICENSE)
+MatoMemo は [MIT License](./LICENSE) で公開しています。
+
+本アプリケーションが利用しているサードパーティ製ソフトウェアとそのライセンスの
+一覧は [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) を参照してください。
+`npm run licenses` で再生成できます。
+
+### 商標について
+
+Tauri および Tauri のロゴは Tauri プロジェクトの商標です。MatoMemo は Tauri を
+利用していますが、Tauri プロジェクトによって承認・提携されたものではありません。
+アプリケーションアイコンは MatoMemo 独自のもの（[assets/app-icon.svg](./assets/app-icon.svg)）です。

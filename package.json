@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build --target aarch64-apple-darwin"
+    "tauri:build": "tauri build --target aarch64-apple-darwin",
+    "licenses": "node scripts/generate-third-party-licenses.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

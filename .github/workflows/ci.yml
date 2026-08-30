@@ -63,3 +63,9 @@ jobs:
 
       - name: Build Tauri app
         run: npm run tauri:build -- --bundles app
+
+      - name: Verify THIRD_PARTY_LICENSES.md is up to date
+        run: |
+          npm run licenses
+          git diff --exit-code -- THIRD_PARTY_LICENSES.md \
+            || { echo "::error::依存が変更されています。'npm run licenses' を実行してコミットしてください。"; exit 1; }
