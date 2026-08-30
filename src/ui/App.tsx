@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   createImage,
   createShape,
@@ -18,10 +18,14 @@ import {
   zoomAt,
   createViewport,
 } from "../domain/viewport";
+import type { BoardFileStore } from "../platform/boardFileStore";
+import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ContextMenu } from "./ContextMenu";
+import { FileBar } from "./FileBar";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
 import { Toolbar } from "./Toolbar";
@@ -42,7 +46,12 @@ export interface AppProps {
   readonly store?: BoardStore;
   /** 画像を選ばせる手段。テストでは差し替える。 */
   readonly imagePicker?: ImagePicker;
+  /** ボードの読み書きの手段。テストではインメモリ実装に差し替える。 */
+  readonly fileStore?: BoardFileStore;
 }
+
+/** 未保存の変更を捨てる確認が要る操作。 */
+type PendingAction = "new" | "open";
 
 /** テキストを内包できるアイテムか。 */
 function isTextEditable(item: Item | undefined): item is TextEditableItem {
@@ -52,9 +61,17 @@ function isTextEditable(item: Item | undefined): item is TextEditableItem {
   );
 }
 
+/** 既定のファイルストア。モジュール読み込み時ではなく初回利用時に作る。 */
+let defaultFileStore: BoardFileStore | undefined;
+function getDefaultFileStore(): BoardFileStore {
+  defaultFileStore ??= createTauriBoardFileStore();
+  return defaultFileStore;
+}
+
 export function App({
   store = useBoardStore,
   imagePicker = pickImage,
+  fileStore = getDefaultFileStore(),
 }: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
@@ -68,6 +85,12 @@ export function App({
   const clearSelection = store((state) => state.clearSelection);
   const connectItems = store((state) => state.connectItems);
   const removeConnector = store((state) => state.removeConnector);
+  const filePath = store((state) => state.filePath);
+  const savedBoard = store((state) => state.savedBoard);
+  const renameBoard = store((state) => state.renameBoard);
+  const openBoard = store((state) => state.openBoard);
+  const markSaved = store((state) => state.markSaved);
+  const newBoard = store((state) => state.newBoard);
   const bringSelectedToFront = store((state) => state.bringSelectedToFront);
   const sendSelectedToBack = store((state) => state.sendSelectedToBack);
   const bringSelectedForward = store((state) => state.bringSelectedForward);
@@ -90,6 +113,12 @@ export function App({
   const [connectingFrom, setConnectingFrom] = useState<ItemId | null>(null);
   /** これから引くコネクタの種類。 */
   const [connectorKind, setConnectorKind] = useState<ConnectorKind>("straight");
+  /** ファイル操作の実行中か。 */
+  const [busy, setBusy] = useState(false);
+  /** 未保存の変更の確認待ちになっている操作。 */
+  const [pending, setPending] = useState<PendingAction | null>(null);
+
+  const dirty = board !== savedBoard;
   const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
 
@@ -163,6 +192,84 @@ export function App({
     }
   }, [addItem, imagePicker, nextItemPosition]);
 
+  /**
+   * ファイル操作の失敗を利用者に伝える。
+   * StorageError も BoardFileError も Error を継承しているので、
+   * それぞれのメッセージがそのまま表示される。
+   */
+  const reportFailure = useCallback((cause: unknown) => {
+    setError(cause instanceof Error ? cause.message : "操作に失敗しました。");
+  }, []);
+
+  /** 保存先が決まっていればそこへ、なければ保存先を尋ねて保存する。 */
+  const saveTo = useCallback(
+    async (path: string | null) => {
+      setError(null);
+      setBusy(true);
+      try {
+        if (path === null) {
+          const chosen = await fileStore.saveAs(board);
+          if (chosen !== null) {
+            markSaved(chosen);
+          }
+          return;
+        }
+        await fileStore.save(path, board);
+        markSaved(path);
+      } catch (cause) {
+        reportFailure(cause);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [board, fileStore, markSaved, reportFailure],
+  );
+
+  const handleSave = useCallback(() => {
+    void saveTo(filePath);
+  }, [filePath, saveTo]);
+
+  const handleSaveAs = useCallback(() => {
+    void saveTo(null);
+  }, [saveTo]);
+
+  /** 確認を経たうえで実際に行う破壊的な操作。 */
+  const runPending = useCallback(
+    async (action: PendingAction) => {
+      if (action === "new") {
+        newBoard();
+        return;
+      }
+      setError(null);
+      setBusy(true);
+      try {
+        const opened = await fileStore.open();
+        if (opened !== null) {
+          openBoard(opened.board, opened.path);
+        }
+      } catch (cause) {
+        reportFailure(cause);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [fileStore, newBoard, openBoard, reportFailure],
+  );
+
+  /** 未保存なら確認してから、そうでなければそのまま実行する。 */
+  const requestAction = useCallback(
+    (action: PendingAction) => {
+      setMenu(null);
+      setEditingId(null);
+      if (dirty) {
+        setPending(action);
+        return;
+      }
+      void runPending(action);
+    },
+    [dirty, runPending],
+  );
+
   const handleContextMenu = useCallback(
     (target: ContextMenuTarget | null, position: { x: number; y: number }) => {
       if (target === null) {
@@ -233,10 +340,51 @@ export function App({
     [setViewport, viewport],
   );
 
+  // Command + S / O / N のキーボード操作。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.altKey || event.ctrlKey) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleSaveAs();
+        } else {
+          handleSave();
+        }
+        return;
+      }
+      if (key === "o") {
+        event.preventDefault();
+        requestAction("open");
+        return;
+      }
+      if (key === "n") {
+        event.preventDefault();
+        requestAction("new");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleSave, handleSaveAs, requestAction]);
+
   const zoomPercent = Math.round(clampScale(viewport.scale) * 100);
 
   return (
     <main className="app">
+      <FileBar
+        boardName={board.name}
+        onRename={renameBoard}
+        dirty={dirty}
+        onNew={() => requestAction("new")}
+        onOpen={() => requestAction("open")}
+        onSave={handleSave}
+        onSaveAs={handleSaveAs}
+        busy={busy}
+      />
+
       <BoardCanvas
         board={board}
         viewport={viewport}
@@ -309,6 +457,19 @@ export function App({
                   { label: "削除", onSelect: removeSelected },
                 ]
           }
+        />
+      )}
+
+      {pending === null ? null : (
+        <ConfirmDialog
+          message="保存していない変更があります。破棄して続けますか？"
+          confirmLabel="破棄して続行"
+          onConfirm={() => {
+            const action = pending;
+            setPending(null);
+            void runPending(action);
+          }}
+          onCancel={() => setPending(null)}
         />
       )}
 

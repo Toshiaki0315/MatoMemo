@@ -43,6 +43,28 @@ export interface BoardState {
   /** 選択中のアイテム id。 */
   readonly selectedIds: ReadonlySet<ItemId>;
 
+  /** 保存先のパス。まだ保存していなければ null。 */
+  readonly filePath: string | null;
+  /**
+   * 最後に保存・読み込みした時点のボード。
+   *
+   * 未保存かどうかは「今のボードとこれが同じ参照か」で判定する。
+   * 更新はすべて不変で行い、内容が変わらない操作は同じ参照を返すため、
+   * 参照比較だけで変更の有無が分かり、フラグの立て忘れが起きない。
+   */
+  readonly savedBoard: Board;
+
+  /** 未保存の変更があるか。 */
+  isDirty(): boolean;
+  /** ボードの名前を変える。 */
+  renameBoard(name: string): void;
+  /** 読み込んだボードで置き換える。 */
+  openBoard(board: Board, filePath: string): void;
+  /** 保存が完了したことを記録する。 */
+  markSaved(filePath: string): void;
+  /** 新しい空のボードにする。 */
+  newBoard(): void;
+
   setViewport(viewport: Viewport): void;
 
   /**
@@ -95,11 +117,48 @@ export type BoardStore = UseBoundStore<StoreApi<BoardState>>;
 
 export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
   const createId = options.createId ?? defaultCreateId;
+  const initialBoard = createBoard({ id: createId() });
 
   return create<BoardState>()((set, get) => ({
-    board: createBoard({ id: createId() }),
+    board: initialBoard,
     viewport: createViewport(),
     selectedIds: new Set<ItemId>(),
+    filePath: null,
+    savedBoard: initialBoard,
+
+    isDirty() {
+      const { board, savedBoard } = get();
+      return board !== savedBoard;
+    },
+
+    renameBoard(name) {
+      set((state) => ({ board: { ...state.board, name } }));
+    },
+
+    openBoard(board, filePath) {
+      set({
+        board,
+        savedBoard: board,
+        filePath,
+        selectedIds: new Set<ItemId>(),
+        viewport: createViewport(),
+      });
+    },
+
+    markSaved(filePath) {
+      set((state) => ({ savedBoard: state.board, filePath }));
+    },
+
+    newBoard() {
+      const board = createBoard({ id: createId() });
+      set({
+        board,
+        savedBoard: board,
+        filePath: null,
+        selectedIds: new Set<ItemId>(),
+        viewport: createViewport(),
+      });
+    },
 
     setViewport(viewport) {
       set({ viewport });

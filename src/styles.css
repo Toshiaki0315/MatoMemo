@@ -171,7 +171,8 @@ body,
 .text-properties {
   position: absolute;
   left: 16px;
-  top: 16px;
+  /* ファイルバーの下に置く */
+  top: 64px;
   display: flex;
   gap: 12px;
   padding: 8px 12px;
@@ -300,4 +301,117 @@ body,
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.file-bar {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 12px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.file-bar .board-name {
+  width: 180px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.file-bar .board-name:hover {
+  border-color: var(--toolbar-border);
+}
+
+.file-bar .board-name:focus {
+  border-color: var(--toolbar-active);
+  outline: none;
+}
+
+.dirty-mark {
+  width: 12px;
+  color: var(--toolbar-active);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.file-bar button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file-bar button:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+}
+
+.file-bar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dialog {
+  max-width: 420px;
+  padding: 20px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 12px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  color: var(--toolbar-text);
+  font-size: 14px;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions button {
+  padding: 7px 14px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dialog-actions button.is-primary {
+  border-color: transparent;
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
 }

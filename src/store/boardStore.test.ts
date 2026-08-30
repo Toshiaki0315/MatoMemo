@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createImage, createShape, createStickyNote } from "../domain/board";
+import {
+  createBoard,
+  createImage,
+  createShape,
+  createStickyNote,
+} from "../domain/board";
 import { findItem } from "../domain/boardOps";
 import { createViewport } from "../domain/viewport";
 import { createBoardStore } from "./boardStore";
@@ -485,5 +490,129 @@ describe("アイテム削除とコネクタ", () => {
     store.getState().removeSelected();
     expect(store.getState().board.connectors).toEqual([]);
     expect(store.getState().board.items).toHaveLength(1);
+  });
+});
+
+describe("ファイルの状態", () => {
+  it("最初は保存先を持たない", () => {
+    expect(setup().getState().filePath).toBeNull();
+  });
+
+  it("最初は未保存の変更が無い", () => {
+    expect(setup().getState().isDirty()).toBe(false);
+  });
+
+  it("アイテムを追加すると未保存になる", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    expect(store.getState().isDirty()).toBe(true);
+  });
+
+  it("選択を変えただけでは未保存にならない", () => {
+    const store = setup();
+    store.getState().clearSelection();
+    store.getState().selectMany([]);
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("ビューポートを変えただけでは未保存にならない", () => {
+    const store = setup();
+    store.getState().setViewport({ x: 10, y: 10, scale: 2 });
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("何も変えない操作では未保存にならない", () => {
+    const store = setup();
+    store.getState().moveSelected(0, 0);
+    store.getState().bringSelectedToFront();
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("保存すると未保存でなくなる", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().markSaved("/tmp/a.matomemo");
+    expect(store.getState().isDirty()).toBe(false);
+    expect(store.getState().filePath).toBe("/tmp/a.matomemo");
+  });
+
+  it("保存後に変更すると再び未保存になる", () => {
+    const store = setup();
+    store.getState().markSaved("/tmp/a.matomemo");
+    addSticky(store, 0, 0);
+    expect(store.getState().isDirty()).toBe(true);
+  });
+});
+
+describe("renameBoard", () => {
+  it("名前を変える", () => {
+    const store = setup();
+    store.getState().renameBoard("設計メモ");
+    expect(store.getState().board.name).toBe("設計メモ");
+  });
+
+  it("名前の変更も未保存の変更に数える", () => {
+    const store = setup();
+    store.getState().renameBoard("設計メモ");
+    expect(store.getState().isDirty()).toBe(true);
+  });
+});
+
+describe("openBoard", () => {
+  /** 付箋を 1 枚持つ読み込み済みボード。 */
+  function loadedBoard() {
+    return {
+      ...createBoard({ id: "loaded" }),
+      items: [createStickyNote({ id: "x", x: 5, y: 5 })],
+    };
+  }
+
+  it("ボードを置き換える", () => {
+    const store = setup();
+    store.getState().openBoard(loadedBoard(), "/tmp/a.matomemo");
+    expect(store.getState().board.id).toBe("loaded");
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("保存先を記録し、未保存でない状態にする", () => {
+    const store = setup();
+    store.getState().openBoard(loadedBoard(), "/tmp/a.matomemo");
+    expect(store.getState().filePath).toBe("/tmp/a.matomemo");
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("選択と表示位置を初期化する", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().setViewport({ x: 50, y: 50, scale: 3 });
+    store.getState().openBoard(loadedBoard(), "/tmp/a.matomemo");
+    expect(store.getState().selectedIds.size).toBe(0);
+    expect(store.getState().viewport).toEqual(createViewport());
+  });
+});
+
+describe("newBoard", () => {
+  it("空のボードにする", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().newBoard();
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("保存先を忘れ、未保存でない状態にする", () => {
+    const store = setup();
+    store.getState().markSaved("/tmp/a.matomemo");
+    store.getState().newBoard();
+    expect(store.getState().filePath).toBeNull();
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("選択と表示位置を初期化する", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().setViewport({ x: 50, y: 50, scale: 3 });
+    store.getState().newBoard();
+    expect(store.getState().selectedIds.size).toBe(0);
+    expect(store.getState().viewport).toEqual(createViewport());
   });
 });
