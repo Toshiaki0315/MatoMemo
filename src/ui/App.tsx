@@ -91,6 +91,12 @@ export function App({
   const openBoard = store((state) => state.openBoard);
   const markSaved = store((state) => state.markSaved);
   const newBoard = store((state) => state.newBoard);
+  const past = store((state) => state.past);
+  const future = store((state) => state.future);
+  const undo = store((state) => state.undo);
+  const redo = store((state) => state.redo);
+  const beginHistoryGroup = store((state) => state.beginHistoryGroup);
+  const endHistoryGroup = store((state) => state.endHistoryGroup);
   const bringSelectedToFront = store((state) => state.bringSelectedToFront);
   const sendSelectedToBack = store((state) => state.sendSelectedToBack);
   const bringSelectedForward = store((state) => state.bringSelectedForward);
@@ -119,6 +125,8 @@ export function App({
   const [pending, setPending] = useState<PendingAction | null>(null);
 
   const dirty = board !== savedBoard;
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
   const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
 
@@ -364,11 +372,20 @@ export function App({
       if (key === "n") {
         event.preventDefault();
         requestAction("new");
+        return;
+      }
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleSaveAs, requestAction]);
+  }, [handleSave, handleSaveAs, redo, requestAction, undo]);
 
   const zoomPercent = Math.round(clampScale(viewport.scale) * 100);
 
@@ -383,6 +400,10 @@ export function App({
         onSave={handleSave}
         onSaveAs={handleSaveAs}
         busy={busy}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
       />
 
       <BoardCanvas
@@ -394,6 +415,8 @@ export function App({
         onMoveSelected={moveSelected}
         onResizeItem={resizeItem}
         onDeleteSelected={removeSelected}
+        onBeginInteraction={beginHistoryGroup}
+        onEndInteraction={endHistoryGroup}
         onContextMenu={handleContextMenu}
         onActivateItem={handleActivateItem}
         connectMode={connectMode}

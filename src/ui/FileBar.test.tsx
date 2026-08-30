@@ -9,11 +9,15 @@ function renderBar(overrides: Partial<Parameters<typeof FileBar>[0]> = {}) {
     onOpen: vi.fn(),
     onSave: vi.fn(),
     onSaveAs: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
   };
   render(
     <FileBar
       boardName="設計メモ"
       dirty={false}
+      canUndo={false}
+      canRedo={false}
       {...handlers}
       {...overrides}
     />,
@@ -58,6 +62,20 @@ describe("FileBar", () => {
       fireEvent.click(screen.getByRole("button", { name: label }));
       expect(handler).toHaveBeenCalled();
     }
+  });
+
+  it("戻せないときは元に戻すボタンを無効にする", () => {
+    renderBar();
+    expect(screen.getByRole("button", { name: "元に戻す" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "やり直す" })).toBeDisabled();
+  });
+
+  it("戻せるときは有効になり通知する", () => {
+    const { onUndo, onRedo } = renderBar({ canUndo: true, canRedo: true });
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    fireEvent.click(screen.getByRole("button", { name: "やり直す" }));
+    expect(onUndo).toHaveBeenCalled();
+    expect(onRedo).toHaveBeenCalled();
   });
 
   it("処理中はボタンを無効にする", () => {

@@ -7,7 +7,7 @@ import {
 } from "../domain/board";
 import { findItem } from "../domain/boardOps";
 import { createViewport } from "../domain/viewport";
-import { createBoardStore } from "./boardStore";
+import { createBoardStore, HISTORY_LIMIT } from "./boardStore";
 
 /** 連番の id を発行するストアを作る。 */
 function setup() {
@@ -614,5 +614,236 @@ describe("newBoard", () => {
     store.getState().newBoard();
     expect(store.getState().selectedIds.size).toBe(0);
     expect(store.getState().viewport).toEqual(createViewport());
+  });
+});
+
+describe("元に戻す / やり直す", () => {
+  it("最初は何も戻せない", () => {
+    const store = setup();
+    expect(store.getState().canUndo()).toBe(false);
+    expect(store.getState().canRedo()).toBe(false);
+  });
+
+  it("アイテムの追加を取り消せる", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().undo();
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("取り消した操作をやり直せる", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+    store.getState().undo();
+    store.getState().redo();
+    expect(store.getState().board.items.map((item) => item.id)).toEqual([id]);
+  });
+
+  it("複数の操作を順に取り消せる", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    addSticky(store, 100, 0);
+    store.getState().undo();
+    expect(store.getState().board.items).toHaveLength(1);
+    store.getState().undo();
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("戻せるものが無ければ何も起きない", () => {
+    const store = setup();
+    const before = store.getState().board;
+    store.getState().undo();
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("やり直せるものが無ければ何も起きない", () => {
+    const store = setup();
+    const before = store.getState().board;
+    store.getState().redo();
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("取り消した後に新しい操作をするとやり直せなくなる", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().undo();
+    expect(store.getState().canRedo()).toBe(true);
+    addSticky(store, 50, 50);
+    expect(store.getState().canRedo()).toBe(false);
+  });
+
+  it("削除も取り消せる", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+    store.getState().removeSelected();
+    store.getState().undo();
+    expect(store.getState().board.items.map((item) => item.id)).toEqual([id]);
+  });
+
+  it("移動も取り消せる", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+    store.getState().moveSelected(50, 50);
+    store.getState().undo();
+    expect(findItem(store.getState().board, id)).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("重なり順の変更も取り消せる", () => {
+    const store = setup();
+    const first = addSticky(store, 0, 0);
+    const second = addSticky(store, 100, 0);
+    store.getState().selectOnly(first);
+    store.getState().bringSelectedToFront();
+    store.getState().undo();
+    expect(store.getState().board.items.map((item) => item.id)).toEqual([
+      first,
+      second,
+    ]);
+  });
+
+  it("コネクタの追加も取り消せる", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    store.getState().connectItems(a, b, "straight");
+    store.getState().undo();
+    expect(store.getState().board.connectors).toEqual([]);
+  });
+
+  it("名前の変更も取り消せる", () => {
+    const store = setup();
+    store.getState().renameBoard("設計メモ");
+    store.getState().undo();
+    expect(store.getState().board.name).toBe("無題のボード");
+  });
+
+  it("選択やズームは履歴に積まない", () => {
+    const store = setup();
+    store.getState().selectMany([]);
+    store.getState().setViewport({ x: 10, y: 10, scale: 2 });
+    expect(store.getState().canUndo()).toBe(false);
+  });
+
+  it("取り消しで消えたアイテムを選択したままにしない", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+    expect(store.getState().selectedIds.has(id)).toBe(true);
+    store.getState().undo();
+    expect(store.getState().selectedIds.size).toBe(0);
+  });
+
+  it("やり直しでも存在しないアイテムを選択したままにしない", () => {
+    const store = setup();
+    const first = addSticky(store, 0, 0);
+    store.getState().removeSelected();
+    store.getState().undo();
+    store.getState().selectOnly(first);
+    store.getState().redo();
+    expect(store.getState().selectedIds.size).toBe(0);
+  });
+
+  it("残っているアイテムの選択は保つ", () => {
+    const store = setup();
+    const first = addSticky(store, 0, 0);
+    addSticky(store, 100, 0);
+    store.getState().selectOnly(first);
+    store.getState().moveSelected(10, 10);
+    store.getState().undo();
+    expect(store.getState().selectedIds.has(first)).toBe(true);
+  });
+
+  it("履歴の上限を超えたら古いものから捨てる", () => {
+    const store = setup();
+    for (let i = 0; i < HISTORY_LIMIT + 10; i += 1) {
+      addSticky(store, i, 0);
+    }
+    expect(store.getState().past).toHaveLength(HISTORY_LIMIT);
+  });
+
+  it("読み込むと履歴が消える", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().openBoard(createBoard({ id: "loaded" }), "/tmp/a");
+    expect(store.getState().canUndo()).toBe(false);
+    expect(store.getState().canRedo()).toBe(false);
+  });
+
+  it("新規にすると履歴が消える", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().newBoard();
+    expect(store.getState().canUndo()).toBe(false);
+  });
+});
+
+describe("履歴のまとめ (ドラッグ)", () => {
+  it("まとめている間の変更は 1 回で戻る", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+
+    store.getState().beginHistoryGroup();
+    store.getState().moveSelected(10, 0);
+    store.getState().moveSelected(10, 0);
+    store.getState().moveSelected(10, 0);
+    store.getState().endHistoryGroup();
+
+    expect(findItem(store.getState().board, id)).toMatchObject({ x: 30 });
+    store.getState().undo();
+    expect(findItem(store.getState().board, id)).toMatchObject({ x: 0 });
+  });
+
+  it("まとめの前の操作は別の取り消し単位のまま", () => {
+    const store = setup();
+    const id = addSticky(store, 0, 0);
+    store.getState().beginHistoryGroup();
+    store.getState().moveSelected(30, 0);
+    store.getState().endHistoryGroup();
+
+    store.getState().undo();
+    expect(findItem(store.getState().board, id)).toMatchObject({ x: 0 });
+    store.getState().undo();
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("何も変わらなかったまとめは履歴に残さない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    const before = store.getState().past.length;
+
+    store.getState().beginHistoryGroup();
+    store.getState().moveSelected(0, 0);
+    store.getState().endHistoryGroup();
+
+    expect(store.getState().past).toHaveLength(before);
+  });
+
+  it("二重に開始しても履歴は 1 件しか積まない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    const before = store.getState().past.length;
+
+    store.getState().beginHistoryGroup();
+    store.getState().beginHistoryGroup();
+    store.getState().moveSelected(10, 0);
+    store.getState().endHistoryGroup();
+
+    expect(store.getState().past).toHaveLength(before + 1);
+  });
+
+  it("開始していないのに終了しても何も起きない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    const before = store.getState().past;
+    store.getState().endHistoryGroup();
+    expect(store.getState().past).toBe(before);
+  });
+
+  it("まとめの開始はやり直しを打ち切る", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().undo();
+    expect(store.getState().canRedo()).toBe(true);
+    store.getState().beginHistoryGroup();
+    expect(store.getState().canRedo()).toBe(false);
   });
 });

@@ -45,6 +45,12 @@ export interface BoardCanvasProps {
     dy: number,
   ) => void;
   readonly onDeleteSelected: () => void;
+  /**
+   * ドラッグやリサイズの開始・終了。
+   * 1 回の操作で起きる多数の更新を、1 回の取り消し単位にまとめるために使う。
+   */
+  readonly onBeginInteraction?: () => void;
+  readonly onEndInteraction?: () => void;
   /** 右クリックされたとき。空白部分なら target は null。 */
   readonly onContextMenu?: (
     target: ContextMenuTarget | null,
@@ -92,6 +98,8 @@ export function BoardCanvas({
   onMoveSelected,
   onResizeItem,
   onDeleteSelected,
+  onBeginInteraction,
+  onEndInteraction,
   onContextMenu,
   connectMode = false,
   onPickForConnection,
@@ -128,6 +136,8 @@ export function BoardCanvas({
     onActivateItem,
     connectMode,
     onPickForConnection,
+    onBeginInteraction,
+    onEndInteraction,
   });
   useEffect(() => {
     latest.current = {
@@ -142,6 +152,8 @@ export function BoardCanvas({
       onActivateItem,
       connectMode,
       onPickForConnection,
+      onBeginInteraction,
+      onEndInteraction,
     };
   });
 
@@ -271,6 +283,7 @@ export function BoardCanvas({
             origin,
             mode: { kind: "resize", id: target.id, handle },
           };
+          latest.current.onBeginInteraction?.();
           return;
         }
       }
@@ -288,6 +301,7 @@ export function BoardCanvas({
       }
 
       drag.current = { origin, mode: { kind: "item" } };
+      latest.current.onBeginInteraction?.();
       // 選択済みのアイテムを掴んだ場合は選択を変えない。変えてしまうと
       // 複数選択したままの移動ができなくなる。
       if (additive || !selectedIds.has(hit.id)) {
@@ -365,11 +379,15 @@ export function BoardCanvas({
     };
 
     const handlePointerUp = () => {
-      if (drag.current === null) {
+      const current = drag.current;
+      if (current === null) {
         return;
       }
       drag.current = null;
       setIsPanning(false);
+      if (current.mode.kind !== "pan") {
+        latest.current.onEndInteraction?.();
+      }
     };
 
     const handleDoubleClick = (event: MouseEvent) => {

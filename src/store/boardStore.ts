@@ -29,13 +29,16 @@ import {
 } from "../domain/boardOps";
 import { createId as defaultCreateId } from "../domain/ids";
 import { resizeRect, type ResizeHandle } from "../domain/resize";
+import { createViewport, type Viewport } from "../domain/viewport";
 import {
   bringForward,
   bringToFront,
   sendBackward,
   sendToBack,
 } from "../domain/zorder";
-import { createViewport, type Viewport } from "../domain/viewport";
+
+/** 保持する取り消し履歴の上限。 */
+export const HISTORY_LIMIT = 100;
 
 export interface BoardState {
   readonly board: Board;
@@ -54,8 +57,26 @@ export interface BoardState {
    */
   readonly savedBoard: Board;
 
+  /** 取り消せる過去のボード（古い順）。 */
+  readonly past: readonly Board[];
+  /** やり直せる未来のボード（近い順）。 */
+  readonly future: readonly Board[];
+  /** 連続した変更を 1 回の取り消し単位にまとめている最中か。 */
+  readonly grouping: boolean;
+
   /** 未保存の変更があるか。 */
   isDirty(): boolean;
+  canUndo(): boolean;
+  canRedo(): boolean;
+  undo(): void;
+  redo(): void;
+  /**
+   * ここから `endHistoryGroup` までの変更を 1 回の取り消しでまとめて戻す。
+   * ドラッグのように 1 回の操作が多数の更新を生む場面で使う。
+   */
+  beginHistoryGroup(): void;
+  endHistoryGroup(): void;
+
   /** ボードの名前を変える。 */
   renameBoard(name: string): void;
   /** 読み込んだボードで置き換える。 */
@@ -74,6 +95,13 @@ export interface BoardState {
    */
   addItem(create: (id: ItemId) => Item): ItemId;
   replaceItem(item: Item): void;
+  moveSelected(dx: number, dy: number): void;
+  /**
+   * アイテムをリサイズする。画像は原寸の縦横比を必ず保つ。
+   * @param dx ハンドルの移動量（ワールド座標）
+   */
+  resizeItem(id: ItemId, handle: ResizeHandle, dx: number, dy: number): void;
+  removeSelected(): void;
 
   /**
    * アイテム同士を結ぶコネクタを追加する。
@@ -86,13 +114,6 @@ export interface BoardState {
     kind: ConnectorKind,
   ): ConnectorId | null;
   removeConnector(id: ConnectorId): void;
-  moveSelected(dx: number, dy: number): void;
-  /**
-   * アイテムをリサイズする。画像は原寸の縦横比を必ず保つ。
-   * @param dx ハンドルの移動量（ワールド座標）
-   */
-  resizeItem(id: ItemId, handle: ResizeHandle, dx: number, dy: number): void;
-  removeSelected(): void;
 
   /** 選択中のアイテムの重なり順を変える。 */
   bringSelectedToFront(): void;
@@ -115,202 +136,318 @@ export interface BoardStoreOptions {
 
 export type BoardStore = UseBoundStore<StoreApi<BoardState>>;
 
+/**
+ * ボードを差し替えた状態の断片を組み立て、同時に履歴を積む。
+ *
+ * 内容が変わらない場合は何も返さない。ボードの更新はすべて不変で行い、
+ * 変化のない操作は同じ参照を返すため、参照比較だけで判定できる。
+ */
+function withBoard(state: BoardState, next: Board): Partial<BoardState> {
+  if (next === state.board) {
+    return {};
+  }
+  return {
+    board: next,
+    // まとめている最中は、開始時に積んだ 1 件だけを取り消し単位とする
+    past: state.grouping
+      ? state.past
+      : [...state.past, state.board].slice(-HISTORY_LIMIT),
+    future: [],
+  };
+}
+
+/** 今のボードに存在しないアイテムを選択から外す。 */
+function pruneSelection(
+  selectedIds: ReadonlySet<ItemId>,
+  board: Board,
+): ReadonlySet<ItemId> {
+  const alive = new Set(board.items.map((item) => item.id));
+  const next = new Set([...selectedIds].filter((id) => alive.has(id)));
+  return next.size === selectedIds.size ? selectedIds : next;
+}
+
 export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
   const createId = options.createId ?? defaultCreateId;
   const initialBoard = createBoard({ id: createId() });
 
-  return create<BoardState>()((set, get) => ({
-    board: initialBoard,
-    viewport: createViewport(),
-    selectedIds: new Set<ItemId>(),
-    filePath: null,
-    savedBoard: initialBoard,
+  return create<BoardState>()((set, get) => {
+    /** 重なり順の操作を適用する。 */
+    const reorder = (
+      operation: (
+        items: readonly Item[],
+        ids: readonly ItemId[],
+      ) => readonly Item[],
+    ): void => {
+      set((state) => {
+        const items = operation(state.board.items, [...state.selectedIds]);
+        // 並びが変わらなければボードの参照も変えない。
+        // 変えてしまうと未保存扱いになり、履歴にも無駄が積まれる。
+        if (items === state.board.items) {
+          return state;
+        }
+        return withBoard(state, { ...state.board, items });
+      });
+    };
 
-    isDirty() {
-      const { board, savedBoard } = get();
-      return board !== savedBoard;
-    },
-
-    renameBoard(name) {
-      set((state) => ({ board: { ...state.board, name } }));
-    },
-
-    openBoard(board, filePath) {
+    /** 履歴を空にしてボードを差し替える（読み込み・新規作成）。 */
+    const replaceBoard = (board: Board, filePath: string | null): void => {
       set({
         board,
         savedBoard: board,
         filePath,
         selectedIds: new Set<ItemId>(),
         viewport: createViewport(),
+        past: [],
+        future: [],
+        grouping: false,
       });
-    },
+    };
 
-    markSaved(filePath) {
-      set((state) => ({ savedBoard: state.board, filePath }));
-    },
+    return {
+      board: initialBoard,
+      viewport: createViewport(),
+      selectedIds: new Set<ItemId>(),
+      filePath: null,
+      savedBoard: initialBoard,
+      past: [],
+      future: [],
+      grouping: false,
 
-    newBoard() {
-      const board = createBoard({ id: createId() });
-      set({
-        board,
-        savedBoard: board,
-        filePath: null,
-        selectedIds: new Set<ItemId>(),
-        viewport: createViewport(),
-      });
-    },
+      isDirty() {
+        const { board, savedBoard } = get();
+        return board !== savedBoard;
+      },
 
-    setViewport(viewport) {
-      set({ viewport });
-    },
+      canUndo() {
+        return get().past.length > 0;
+      },
 
-    addItem(create) {
-      const id = createId();
-      set((state) => ({
-        board: addItemToBoard(state.board, create(id)),
-        // 追加直後は続けて編集・移動することが多いため選択状態にする
-        selectedIds: new Set([id]),
-      }));
-      return id;
-    },
+      canRedo() {
+        return get().future.length > 0;
+      },
 
-    replaceItem(item) {
-      set((state) => ({ board: replaceItemInBoard(state.board, item) }));
-    },
+      undo() {
+        set((state) => {
+          const previous = state.past.at(-1);
+          if (previous === undefined) {
+            return state;
+          }
+          return {
+            board: previous,
+            past: state.past.slice(0, -1),
+            future: [state.board, ...state.future],
+            selectedIds: pruneSelection(state.selectedIds, previous),
+          };
+        });
+      },
 
-    connectItems(fromItemId, toItemId, kind) {
-      // 自分自身への接続は線として描けないため作らない
-      if (fromItemId === toItemId) {
-        return null;
-      }
-      const { board } = get();
-      const duplicated = board.connectors.some(
-        (connector) =>
-          (connector.fromItemId === fromItemId &&
-            connector.toItemId === toItemId) ||
-          (connector.fromItemId === toItemId &&
-            connector.toItemId === fromItemId),
-      );
-      if (duplicated) {
-        return null;
-      }
-      const id = createId();
-      set({
-        board: addConnectorToBoard(
-          board,
-          createConnector({ id, fromItemId, toItemId, kind }),
-        ),
-      });
-      return id;
-    },
+      redo() {
+        set((state) => {
+          const next = state.future[0];
+          if (next === undefined) {
+            return state;
+          }
+          return {
+            board: next,
+            past: [...state.past, state.board].slice(-HISTORY_LIMIT),
+            future: state.future.slice(1),
+            selectedIds: pruneSelection(state.selectedIds, next),
+          };
+        });
+      },
 
-    removeConnector(id) {
-      set((state) => ({ board: removeConnectors(state.board, [id]) }));
-    },
+      beginHistoryGroup() {
+        set((state) => {
+          if (state.grouping) {
+            return state;
+          }
+          return {
+            grouping: true,
+            past: [...state.past, state.board].slice(-HISTORY_LIMIT),
+            future: [],
+          };
+        });
+      },
 
-    moveSelected(dx, dy) {
-      set((state) => ({
-        board: moveItems(state.board, [...state.selectedIds], dx, dy),
-      }));
-    },
+      endHistoryGroup() {
+        set((state) => {
+          if (!state.grouping) {
+            return state;
+          }
+          // 結局何も変わらなかった場合は、積んだ履歴を取り消す
+          const unchanged = state.past.at(-1) === state.board;
+          return {
+            grouping: false,
+            past: unchanged ? state.past.slice(0, -1) : state.past,
+          };
+        });
+      },
 
-    resizeItem(id, handle, dx, dy) {
-      set((state) => {
-        const item = state.board.items.find((candidate) => candidate.id === id);
-        if (item === undefined) {
-          return state;
-        }
-        // 画像は縦横比を維持する。原寸の比を基準にすることで、
-        // 何度リサイズしても元の比から少しずつずれていくことがない。
-        const options =
-          item.type === "image"
-            ? { aspectRatio: item.naturalWidth / item.naturalHeight }
-            : {};
-        const bounds = resizeRect(
-          { x: item.x, y: item.y, width: item.width, height: item.height },
-          handle,
-          dx,
-          dy,
-          options,
+      renameBoard(name) {
+        set((state) => withBoard(state, { ...state.board, name }));
+      },
+
+      openBoard(board, filePath) {
+        replaceBoard(board, filePath);
+      },
+
+      markSaved(filePath) {
+        set((state) => ({ savedBoard: state.board, filePath }));
+      },
+
+      newBoard() {
+        replaceBoard(createBoard({ id: createId() }), null);
+      },
+
+      setViewport(viewport) {
+        set({ viewport });
+      },
+
+      addItem(create) {
+        const id = createId();
+        set((state) => ({
+          ...withBoard(state, addItemToBoard(state.board, create(id))),
+          // 追加直後は続けて編集・移動することが多いため選択状態にする
+          selectedIds: new Set([id]),
+        }));
+        return id;
+      },
+
+      replaceItem(item) {
+        set((state) => withBoard(state, replaceItemInBoard(state.board, item)));
+      },
+
+      moveSelected(dx, dy) {
+        set((state) =>
+          withBoard(
+            state,
+            moveItems(state.board, [...state.selectedIds], dx, dy),
+          ),
         );
-        return {
-          board: replaceItemInBoard(state.board, { ...item, ...bounds }),
-        };
-      });
-    },
+      },
 
-    removeSelected() {
-      set((state) => {
-        if (state.selectedIds.size === 0) {
-          return state;
+      resizeItem(id, handle, dx, dy) {
+        set((state) => {
+          const item = state.board.items.find(
+            (candidate) => candidate.id === id,
+          );
+          if (item === undefined) {
+            return state;
+          }
+          // 画像は縦横比を維持する。原寸の比を基準にすることで、
+          // 何度リサイズしても元の比から少しずつずれていくことがない。
+          const resizeOptions =
+            item.type === "image"
+              ? { aspectRatio: item.naturalWidth / item.naturalHeight }
+              : {};
+          const bounds = resizeRect(
+            { x: item.x, y: item.y, width: item.width, height: item.height },
+            handle,
+            dx,
+            dy,
+            resizeOptions,
+          );
+          return withBoard(
+            state,
+            replaceItemInBoard(state.board, { ...item, ...bounds }),
+          );
+        });
+      },
+
+      removeSelected() {
+        set((state) => {
+          if (state.selectedIds.size === 0) {
+            return state;
+          }
+          return {
+            ...withBoard(
+              state,
+              removeItems(state.board, [...state.selectedIds]),
+            ),
+            selectedIds: new Set<ItemId>(),
+          };
+        });
+      },
+
+      connectItems(fromItemId, toItemId, kind) {
+        // 自分自身への接続は線として描けないため作らない
+        if (fromItemId === toItemId) {
+          return null;
         }
-        return {
-          board: removeItems(state.board, [...state.selectedIds]),
-          selectedIds: new Set<ItemId>(),
-        };
-      });
-    },
-
-    bringSelectedToFront() {
-      set((state) => reorder(state, bringToFront));
-    },
-
-    sendSelectedToBack() {
-      set((state) => reorder(state, sendToBack));
-    },
-
-    bringSelectedForward() {
-      set((state) => reorder(state, bringForward));
-    },
-
-    sendSelectedBackward() {
-      set((state) => reorder(state, sendBackward));
-    },
-
-    selectOnly(id) {
-      set({ selectedIds: new Set([id]) });
-    },
-
-    toggleSelection(id) {
-      set((state) => {
-        const next = new Set(state.selectedIds);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
+        const { board } = get();
+        const duplicated = board.connectors.some(
+          (connector) =>
+            (connector.fromItemId === fromItemId &&
+              connector.toItemId === toItemId) ||
+            (connector.fromItemId === toItemId &&
+              connector.toItemId === fromItemId),
+        );
+        if (duplicated) {
+          return null;
         }
-        return { selectedIds: next };
-      });
-    },
+        const id = createId();
+        set((state) =>
+          withBoard(
+            state,
+            addConnectorToBoard(
+              state.board,
+              createConnector({ id, fromItemId, toItemId, kind }),
+            ),
+          ),
+        );
+        return id;
+      },
 
-    selectMany(ids) {
-      set({ selectedIds: new Set(ids) });
-    },
+      removeConnector(id) {
+        set((state) => withBoard(state, removeConnectors(state.board, [id])));
+      },
 
-    clearSelection() {
-      set({ selectedIds: new Set<ItemId>() });
-    },
+      bringSelectedToFront() {
+        reorder(bringToFront);
+      },
 
-    selectedItems() {
-      const { board, selectedIds } = get();
-      return board.items.filter((item) => selectedIds.has(item.id));
-    },
-  }));
-}
+      sendSelectedToBack() {
+        reorder(sendToBack);
+      },
 
-/** 重なり順の操作を適用する。並びが変わらない場合は状態をそのまま返す。 */
-function reorder(
-  state: BoardState,
-  operation: (
-    items: readonly Item[],
-    ids: readonly ItemId[],
-  ) => readonly Item[],
-): Partial<BoardState> | BoardState {
-  const items = operation(state.board.items, [...state.selectedIds]);
-  if (items === state.board.items) {
-    return state;
-  }
-  return { board: { ...state.board, items } };
+      bringSelectedForward() {
+        reorder(bringForward);
+      },
+
+      sendSelectedBackward() {
+        reorder(sendBackward);
+      },
+
+      selectOnly(id) {
+        set({ selectedIds: new Set([id]) });
+      },
+
+      toggleSelection(id) {
+        set((state) => {
+          const next = new Set(state.selectedIds);
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
+          return { selectedIds: next };
+        });
+      },
+
+      selectMany(ids) {
+        set({ selectedIds: new Set(ids) });
+      },
+
+      clearSelection() {
+        set({ selectedIds: new Set<ItemId>() });
+      },
+
+      selectedItems() {
+        const { board, selectedIds } = get();
+        return board.items.filter((item) => selectedIds.has(item.id));
+      },
+    };
+  });
 }
 
 /** アプリケーションで共有するストア。 */

@@ -811,3 +811,124 @@ describe("App: コネクタ", () => {
     expect(store.getState().board.connectors).toEqual([]);
   });
 });
+
+describe("App: 元に戻す / やり直す", () => {
+  it("最初はどちらのボタンも無効", () => {
+    renderApp();
+    expect(screen.getByRole("button", { name: "元に戻す" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "やり直す" })).toBeDisabled();
+  });
+
+  it("操作すると元に戻せるようになる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    expect(screen.getByRole("button", { name: "元に戻す" })).toBeEnabled();
+  });
+
+  it("ボタンで元に戻せる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("ボタンでやり直せる", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    fireEvent.click(screen.getByRole("button", { name: "やり直す" }));
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("⌘Z で元に戻す", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.keyDown(window, { key: "z", metaKey: true });
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("⇧⌘Z でやり直す", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.keyDown(window, { key: "z", metaKey: true });
+    fireEvent.keyDown(window, { key: "Z", metaKey: true, shiftKey: true });
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("ドラッグ移動は 1 回の操作としてまとめて戻る", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const before = store.getState().board.items[0];
+    const canvas = screen.getByTestId("board-canvas");
+
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: (before?.x ?? 0) + 10,
+      clientY: (before?.y ?? 0) + 10,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (before?.x ?? 0) + 40,
+      clientY: (before?.y ?? 0) + 10,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (before?.x ?? 0) + 70,
+      clientY: (before?.y ?? 0) + 10,
+    });
+    fireEvent.pointerUp(window);
+
+    expect(store.getState().board.items[0]?.x).toBe((before?.x ?? 0) + 60);
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items[0]?.x).toBe(before?.x);
+    // アイテムの追加自体はまだ残っている
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("リサイズも 1 回の操作としてまとめて戻る", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const before = store.getState().board.items[0];
+    const canvas = screen.getByTestId("board-canvas");
+    const handleX = (before?.x ?? 0) + (before?.width ?? 0);
+    const handleY = (before?.y ?? 0) + (before?.height ?? 0);
+
+    fireEvent.pointerDown(canvas, { button: 0, clientX: handleX, clientY: handleY });
+    fireEvent.pointerMove(window, { clientX: handleX + 30, clientY: handleY + 30 });
+    fireEvent.pointerMove(window, { clientX: handleX + 60, clientY: handleY + 60 });
+    fireEvent.pointerUp(window);
+
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items[0]).toMatchObject({
+      width: before?.width,
+      height: before?.height,
+    });
+  });
+
+  it("パンだけのドラッグは履歴に残さない", () => {
+    renderApp();
+    const canvas = screen.getByTestId("board-canvas");
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(window, { clientX: 60, clientY: 60 });
+    fireEvent.pointerUp(window);
+    expect(screen.getByRole("button", { name: "元に戻す" })).toBeDisabled();
+  });
+
+  it("アイテムを掴んだだけで動かさなければ履歴に残さない", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    fireEvent.click(screen.getByRole("button", { name: "やり直す" }));
+
+    const item = store.getState().board.items[0];
+    const canvas = screen.getByTestId("board-canvas");
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    fireEvent.pointerUp(window);
+
+    // 追加の 1 件だけが残っているので、1 回戻せば空になる
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items).toEqual([]);
+  });
+});

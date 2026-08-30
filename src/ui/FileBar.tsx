@@ -13,6 +13,10 @@ export interface FileBarProps {
   readonly onSaveAs: () => void;
   /** 保存処理の実行中か。 */
   readonly busy?: boolean;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly onUndo: () => void;
+  readonly onRedo: () => void;
 }
 
 export function FileBar({
@@ -24,6 +28,10 @@ export function FileBar({
   onSave,
   onSaveAs,
   busy = false,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: FileBarProps) {
   return (
     <div className="file-bar" role="group" aria-label="ファイル操作">
@@ -56,6 +64,27 @@ export function FileBar({
       </button>
       <button type="button" onClick={onSaveAs} disabled={busy}>
         別名で保存
+      </button>
+
+      <div className="toolbar-separator" />
+
+      <button
+        type="button"
+        onClick={onUndo}
+        disabled={!canUndo}
+        aria-label="元に戻す"
+        title="元に戻す (⌘Z)"
+      >
+        ↩
+      </button>
+      <button
+        type="button"
+        onClick={onRedo}
+        disabled={!canRedo}
+        aria-label="やり直す"
+        title="やり直す (⇧⌘Z)"
+      >
+        ↪
       </button>
     </div>
   );
