@@ -1,0 +1,50 @@
+# --- Node / フロントエンド ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# --- テスト / カバレッジ ---
+coverage/
+.nyc_output/
+*.lcov
+
+# --- Rust / Tauri ---
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/Cargo.lock.orig
+**/*.rs.bk
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# --- エディタ / IDE ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# --- AI エージェントのキャッシュ / 作業ファイル ---
+.claude/
+.cursor/
+.aider*
+.continue/
+.windsurf/
+CLAUDE.local.md
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# --- 環境変数 ---
+.env
+.env.*
+!.env.example
