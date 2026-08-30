@@ -29,6 +29,7 @@ import {
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ConnectorPropertiesPanel } from "./ConnectorPropertiesPanel";
 import { ContextMenu } from "./ContextMenu";
 import { FileBar } from "./FileBar";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
@@ -98,6 +99,13 @@ export function App({
   const connectItems = store((state) => state.connectItems);
   const removeConnector = store((state) => state.removeConnector);
   const toggleConnectorArrow = store((state) => state.toggleConnectorArrow);
+  const selectedConnectorId = store((state) => state.selectedConnectorId);
+  const selectConnector = store((state) => state.selectConnector);
+  const removeSelectedConnector = store(
+    (state) => state.removeSelectedConnector,
+  );
+  const reconnect = store((state) => state.reconnect);
+  const replaceConnector = store((state) => state.replaceConnector);
   const filePath = store((state) => state.filePath);
   const savedBoard = store((state) => state.savedBoard);
   const renameBoard = store((state) => state.renameBoard);
@@ -147,6 +155,14 @@ export function App({
   const canRedo = future.length > 0;
   const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
+
+  /** 選択中のコネクタ。設定パネルの対象。 */
+  const selectedConnector =
+    selectedConnectorId === null
+      ? undefined
+      : board.connectors.find(
+          (connector) => connector.id === selectedConnectorId,
+        );
 
   /** テキストアイテムを 1 つだけ選んでいるときにフォント設定を出す。 */
   const soleSelected =
@@ -301,6 +317,15 @@ export function App({
     },
     [dirty, runPending],
   );
+
+  /** 選択しているものを消す。アイテムでも線でも同じキーで消せるようにする。 */
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedConnectorId !== null) {
+      removeSelectedConnector();
+      return;
+    }
+    removeSelected();
+  }, [removeSelected, removeSelectedConnector, selectedConnectorId]);
 
   const handleContextMenu = useCallback(
     (target: ContextMenuTarget | null, position: { x: number; y: number }) => {
@@ -482,9 +507,12 @@ export function App({
         onViewportChange={setViewport}
         onSelect={handleSelect}
         onSelectMany={selectMany}
+        {...(selectedConnectorId !== null ? { selectedConnectorId } : {})}
+        onSelectConnector={selectConnector}
+        onReconnect={reconnect}
         onMoveSelected={moveSelected}
         onResizeItem={resizeItem}
-        onDeleteSelected={removeSelected}
+        onDeleteSelected={handleDeleteSelected}
         onBeginInteraction={beginHistoryGroup}
         onEndInteraction={endHistoryGroup}
         onContextMenu={handleContextMenu}
@@ -505,6 +533,14 @@ export function App({
         />
       ) : null}
 
+      {selectedConnector === undefined ? null : (
+        <ConnectorPropertiesPanel
+          connector={selectedConnector}
+          onChange={replaceConnector}
+          onDelete={removeSelectedConnector}
+        />
+      )}
+
       {isTextEditable(soleSelected) ? (
         <TextPropertiesPanel item={soleSelected} onChange={replaceItem} />
       ) : null}
@@ -514,8 +550,8 @@ export function App({
         onAddShape={handleAddShape}
         onAddText={handleAddText}
         onAddImage={handleAddImage}
-        canDelete={selectedIds.size > 0}
-        onDeleteSelected={removeSelected}
+        canDelete={selectedIds.size > 0 || selectedConnectorId !== null}
+        onDeleteSelected={handleDeleteSelected}
         connectMode={connectMode}
         onToggleConnectMode={toggleConnectMode}
         connectorKind={connectorKind}

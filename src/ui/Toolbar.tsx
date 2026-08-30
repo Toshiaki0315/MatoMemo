@@ -124,6 +124,7 @@ export function Toolbar({
         <label className="connector-arrow">
           <input
             type="checkbox"
+            aria-label="新しい線に矢印を付ける"
             checked={connectorArrow}
             onChange={(event) => onChangeConnectorArrow(event.target.checked)}
           />

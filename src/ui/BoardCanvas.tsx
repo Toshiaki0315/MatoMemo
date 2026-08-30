@@ -9,13 +9,16 @@ import { useEffect, useRef, useState } from "react";
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
 import type { Rect } from "../domain/geometry";
 import { hitTestConnector } from "../domain/connectorHitTest";
+import { connectorPath } from "../domain/connectorPath";
 import { rectFromCorners, type Point } from "../domain/geometry";
 import { hitTest, itemsWithinRect } from "../domain/hitTest";
 import {
   cursorForHandle,
+  HANDLE_HIT_SIZE,
   hitTestHandle,
   type ResizeHandle,
 } from "../domain/resize";
+import { connectorEnds } from "../render/connectorRenderer";
 import { panBy, toWorld, zoomAt, type Viewport } from "../domain/viewport";
 import { renderBoard, type CanvasTheme } from "../render/boardRenderer";
 import type { ImageCache } from "../render/itemRenderer";
@@ -30,6 +33,16 @@ export interface BoardCanvasProps {
   readonly board: Board;
   readonly viewport: Viewport;
   readonly selectedIds: ReadonlySet<ItemId>;
+  /** 選択中のコネクタ。 */
+  readonly selectedConnectorId?: ConnectorId;
+  /** 線がクリックされたとき。空白なら null。 */
+  readonly onSelectConnector?: (id: ConnectorId | null) => void;
+  /** 線の端点を別のアイテムへ運んだとき。 */
+  readonly onReconnect?: (
+    id: ConnectorId,
+    end: "from" | "to",
+    itemId: ItemId,
+  ) => void;
   readonly onViewportChange: (viewport: Viewport) => void;
   /**
    * アイテムが押されたときに呼ばれる。
@@ -98,12 +111,21 @@ type DragMode =
       readonly base: readonly ItemId[];
     }
   | { readonly kind: "item" }
-  | { readonly kind: "resize"; readonly id: ItemId; readonly handle: ResizeHandle };
+  | { readonly kind: "resize"; readonly id: ItemId; readonly handle: ResizeHandle }
+  | {
+      readonly kind: "reconnect";
+      readonly id: ConnectorId;
+      /** 掴んでいるのがどちらの端か。 */
+      readonly end: "from" | "to";
+    };
 
 export function BoardCanvas({
   board,
   viewport,
   selectedIds,
+  selectedConnectorId,
+  onSelectConnector,
+  onReconnect,
   onViewportChange,
   onSelect,
   onSelectMany,
@@ -144,6 +166,9 @@ export function BoardCanvas({
     board,
     viewport,
     selectedIds,
+    selectedConnectorId,
+    onSelectConnector,
+    onReconnect,
     onViewportChange,
     onSelect,
     onSelectMany,
@@ -161,6 +186,9 @@ export function BoardCanvas({
       board,
       viewport,
       selectedIds,
+      selectedConnectorId,
+      onSelectConnector,
+      onReconnect,
       onViewportChange,
       onSelect,
       onSelectMany,
@@ -217,6 +245,7 @@ export function BoardCanvas({
       viewport,
       items: board.items,
       connectors: board.connectors,
+      ...(selectedConnectorId !== undefined ? { selectedConnectorId } : {}),
       selectedIds:
         connectingFrom === undefined
           ? selectedIds
@@ -233,6 +262,7 @@ export function BoardCanvas({
     board.items,
     board.connectors,
     selectedIds,
+    selectedConnectorId,
     connectingFrom,
     theme,
     images,
@@ -308,10 +338,36 @@ export function BoardCanvas({
         }
       }
 
+      // 選択中の線の端点は、アイテムより先に判定する。
+      // 端点はアイテムの縁に重なっているため。
+      const grabbed = grabConnectorEnd(
+        board,
+        // props は latest ref から読む。effect は canvas の登場時に一度だけ
+        // 実行されるので、クロージャの値は初回のまま古くなる。
+        latest.current.selectedConnectorId,
+        world,
+        viewport.scale,
+      );
+      if (grabbed !== null) {
+        drag.current = {
+          origin,
+          mode: { kind: "reconnect", ...grabbed },
+        };
+        latest.current.onBeginInteraction?.();
+        return;
+      }
+
       const hit = hitTest(board.items, world);
       const additive = event.shiftKey || event.metaKey;
 
       if (hit === undefined) {
+        // アイテムに当たらなければ線を狙ったとみなす
+        const connector = hitTestConnector(board, world, viewport.scale);
+        if (connector !== undefined) {
+          latest.current.onSelectConnector?.(connector.id);
+          return;
+        }
+        latest.current.onSelectConnector?.(null);
         // Space を押しながらならキャンバスを動かす（デザインツールの慣例）。
         // それ以外の空白ドラッグは範囲選択にする。
         if (spacePressed.current) {
@@ -334,6 +390,7 @@ export function BoardCanvas({
         return;
       }
 
+      latest.current.onSelectConnector?.(null);
       drag.current = { origin, mode: { kind: "item" } };
       latest.current.onBeginInteraction?.();
       // 選択済みのアイテムを掴んだ場合は選択を変えない。変えてしまうと
@@ -369,6 +426,19 @@ export function BoardCanvas({
           (item) => item.id,
         );
         latest.current.onSelectMany([...current.mode.base, ...inside], false);
+        return;
+      }
+      if (current.mode.kind === "reconnect") {
+        // 運んだ先のアイテムに繋ぎ替える。アイテムの外では何もしない。
+        const world = toWorld(viewport, toCanvasPoint(event));
+        const target = hitTest(latest.current.board.items, world);
+        if (target !== undefined) {
+          latest.current.onReconnect?.(
+            current.mode.id,
+            current.mode.end,
+            target.id,
+          );
+        }
         return;
       }
       if (current.mode.kind === "resize") {
@@ -430,7 +500,7 @@ export function BoardCanvas({
       drag.current = null;
       setIsPanning(false);
       setSelectionRect(null);
-      if (current.mode.kind === "item" || current.mode.kind === "resize") {
+      if (current.mode.kind !== "pan" && current.mode.kind !== "select") {
         latest.current.onEndInteraction?.();
       }
     };
@@ -521,6 +591,41 @@ export function BoardCanvas({
       style={{ cursor: currentCursor(isPanning, hoveredHandle, connectMode) }}
     />
   );
+}
+
+/**
+ * 選択中のコネクタの端点を掴んだかを判定する。
+ * 掴んでいればどちらの端かを返す。
+ */
+function grabConnectorEnd(
+  board: Board,
+  selectedConnectorId: ConnectorId | undefined,
+  world: Point,
+  scale: number,
+): { id: ConnectorId; end: "from" | "to" } | null {
+  if (selectedConnectorId === undefined) {
+    return null;
+  }
+  const connector = board.connectors.find(
+    (candidate) => candidate.id === selectedConnectorId,
+  );
+  if (connector === undefined) {
+    return null;
+  }
+  const byId = new Map(board.items.map((item) => [item.id, item]));
+  const fromItem = byId.get(connector.fromItemId);
+  const toItem = byId.get(connector.toItemId);
+  if (fromItem === undefined || toItem === undefined) {
+    return null;
+  }
+  const reach = HANDLE_HIT_SIZE / scale / 2;
+  const path = connectorPath(connector.kind, fromItem, toItem);
+  for (const { end, point } of connectorEnds(path)) {
+    if (Math.hypot(world.x - point.x, world.y - point.y) <= reach) {
+      return { id: connector.id, end };
+    }
+  }
+  return null;
 }
 
 /** 1 件だけ選択しているアイテムを返す。リサイズの対象。 */

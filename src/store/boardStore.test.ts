@@ -894,3 +894,176 @@ describe("コネクタの矢印", () => {
     expect(store.getState().board.connectors[0]?.arrow).toBe(false);
   });
 });
+
+describe("コネクタの選択", () => {
+  /** 付箋 3 枚と、1〜2 を結ぶコネクタを持つストア。 */
+  function setupConnected() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const c = addSticky(store, 600, 0);
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    return { store, a, b, c, id };
+  }
+
+  it("最初は何も選択していない", () => {
+    expect(setup().getState().selectedConnectorId).toBeNull();
+  });
+
+  it("コネクタを選択できる", () => {
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    expect(store.getState().selectedConnectorId).toBe(id);
+  });
+
+  it("コネクタを選ぶとアイテムの選択は外れる", () => {
+    const { store, a, id } = setupConnected();
+    store.getState().selectOnly(a);
+    store.getState().selectConnector(id);
+    expect(store.getState().selectedIds.size).toBe(0);
+  });
+
+  it("アイテムを選ぶとコネクタの選択は外れる", () => {
+    const { store, a, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().selectOnly(a);
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+
+  it("選択解除でコネクタの選択も外れる", () => {
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().clearSelection();
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+
+  it("選択中のコネクタを削除できる", () => {
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().removeSelectedConnector();
+    expect(store.getState().board.connectors).toEqual([]);
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+
+  it("選択していなければ削除しても何も起きない", () => {
+    const { store } = setupConnected();
+    const before = store.getState().board;
+    store.getState().removeSelectedConnector();
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("読み込むとコネクタの選択も外れる", () => {
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().newBoard();
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+});
+
+describe("reconnect", () => {
+  function setupConnected() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const c = addSticky(store, 600, 0);
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    return { store, a, b, c, id };
+  }
+
+  it("始点を付け替える", () => {
+    const { store, b, c, id } = setupConnected();
+    store.getState().reconnect(id, "from", c);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: c,
+      toItemId: b,
+    });
+  });
+
+  it("終点を付け替える", () => {
+    const { store, a, c, id } = setupConnected();
+    store.getState().reconnect(id, "to", c);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: a,
+      toItemId: c,
+    });
+  });
+
+  it("同じアイテム同士になる付け替えはしない", () => {
+    const { store, a, b, id } = setupConnected();
+    const before = store.getState().board;
+    store.getState().reconnect(id, "to", a);
+    expect(store.getState().board).toBe(before);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: a,
+      toItemId: b,
+    });
+  });
+
+  it("存在しないコネクタは無視する", () => {
+    const { store, c } = setupConnected();
+    const before = store.getState().board;
+    store.getState().reconnect("zzz", "from", c);
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("付け替えは取り消せる", () => {
+    const { store, a, c, id } = setupConnected();
+    store.getState().reconnect(id, "from", c);
+    store.getState().undo();
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: a,
+    });
+  });
+});
+
+describe("コネクタの更新が他に影響しないこと", () => {
+  /** 2 本のコネクタを持つストア。 */
+  function setupTwoConnectors() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const c = addSticky(store, 600, 0);
+    const first = store.getState().connectItems(a, b, "straight") as string;
+    const second = store.getState().connectItems(b, c, "straight") as string;
+    return { store, a, b, c, first, second };
+  }
+
+  it("replaceConnector は他の線を変えない", () => {
+    const { store, first, second } = setupTwoConnectors();
+    const connectors = store.getState().board.connectors;
+    const target = connectors.find((connector) => connector.id === first);
+    const before = connectors.find((connector) => connector.id === second);
+    if (target === undefined) {
+      throw new Error("対象のコネクタが見つかりません");
+    }
+
+    store.getState().replaceConnector({ ...target, kind: "curved" });
+    expect(
+      store
+        .getState()
+        .board.connectors.find((connector) => connector.id === second),
+    ).toBe(before);
+  });
+
+  it("reconnect は他の線を変えない", () => {
+    const { store, c, first, second } = setupTwoConnectors();
+    const before = store
+      .getState()
+      .board.connectors.find((connector) => connector.id === second);
+    store.getState().reconnect(first, "to", c);
+    expect(
+      store.getState().board.connectors.find((connector) => connector.id === second),
+    ).toBe(before);
+  });
+
+  it("矢印の切り替えも他の線を変えない", () => {
+    const { store, first, second } = setupTwoConnectors();
+    const before = store
+      .getState()
+      .board.connectors.find((connector) => connector.id === second);
+    store.getState().toggleConnectorArrow(first);
+    expect(
+      store.getState().board.connectors.find((connector) => connector.id === second),
+    ).toBe(before);
+  });
+});

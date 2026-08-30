@@ -793,7 +793,9 @@ describe("App: コネクタ", () => {
   it("矢印付きの線を引ける", () => {
     renderApp();
     addTwoStickies();
-    fireEvent.click(screen.getByRole("checkbox", { name: "矢印" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "新しい線に矢印を付ける" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
@@ -1043,5 +1045,156 @@ describe("App: 選択したまま接続モードに入る", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     expect(store.getState().selectedIds.size).toBe(0);
+  });
+});
+
+describe("App: 線の選択と編集", () => {
+  /** 付箋 3 枚を横一列に置き、1〜2 を線でつなぐ。 */
+  function setupConnected() {
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    const first = store.getState().board.items[0];
+    act(() => {
+      store.getState().board.items.forEach((item, index) => {
+        store.getState().replaceItem({
+          ...item,
+          x: (first?.x ?? 0) + 400 * index,
+          y: first?.y ?? 0,
+        });
+      });
+      store.getState().clearSelection();
+    });
+
+    const items = store.getState().board.items;
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    for (const index of [0, 1]) {
+      const item = items[index];
+      fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+        button: 0,
+        clientX: (item?.x ?? 0) + 10,
+        clientY: (item?.y ?? 0) + 10,
+      });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    return store.getState().board.items.map((item) => item.id);
+  }
+
+  /** 1 枚目と 2 枚目の間、線の高さをクリックする。 */
+  function clickConnector() {
+    const [first, second] = store.getState().board.items;
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    });
+  }
+
+  it("線をクリックすると設定パネルが出る", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    expect(screen.getByRole("group", { name: "線の設定" })).toBeInTheDocument();
+  });
+
+  it("線を選ぶとアイテムの選択は外れる", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    expect(store.getState().selectedIds.size).toBe(0);
+  });
+
+  it("線の種類を変えられる", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    fireEvent.change(screen.getByLabelText("種類"), {
+      target: { value: "curved" },
+    });
+    expect(store.getState().board.connectors[0]?.kind).toBe("curved");
+  });
+
+  it("後から矢印を付けられる", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    fireEvent.click(screen.getByRole("checkbox", { name: "矢印" }));
+    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+  });
+
+  it("パネルから線を削除できる", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    fireEvent.click(screen.getByRole("button", { name: "線を削除" }));
+    expect(store.getState().board.connectors).toEqual([]);
+    expect(screen.queryByRole("group", { name: "線の設定" })).not.toBeInTheDocument();
+  });
+
+  it("Delete キーでも選択中の線を消せる", () => {
+    renderApp();
+    setupConnected();
+    clickConnector();
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(store.getState().board.connectors).toEqual([]);
+    // アイテムは消えない
+    expect(store.getState().board.items).toHaveLength(3);
+  });
+
+  it("端点をドラッグして接続先を変えられる", () => {
+    renderApp();
+    const ids = setupConnected();
+    clickConnector();
+
+    const items = store.getState().board.items;
+    const second = items[1];
+    const third = items[2];
+    const canvas = screen.getByTestId("board-canvas");
+    // 終点は 2 枚目の左端
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: second?.x ?? 0,
+      clientY: (second?.y ?? 0) + (second?.height ?? 0) / 2,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (third?.x ?? 0) + 50,
+      clientY: (third?.y ?? 0) + 50,
+    });
+    fireEvent.pointerUp(window);
+
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: ids[0],
+      toItemId: ids[2],
+    });
+  });
+
+  it("付け替えは 1 回で取り消せる", () => {
+    renderApp();
+    const ids = setupConnected();
+    clickConnector();
+
+    const items = store.getState().board.items;
+    const second = items[1];
+    const third = items[2];
+    const canvas = screen.getByTestId("board-canvas");
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: second?.x ?? 0,
+      clientY: (second?.y ?? 0) + (second?.height ?? 0) / 2,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (third?.x ?? 0) + 30,
+      clientY: (third?.y ?? 0) + 30,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: (third?.x ?? 0) + 50,
+      clientY: (third?.y ?? 0) + 50,
+    });
+    fireEvent.pointerUp(window);
+
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      toItemId: ids[1],
+    });
   });
 });

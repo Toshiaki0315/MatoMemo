@@ -47,6 +47,7 @@ interface RenderOptions {
   readonly selectedIds?: ReadonlySet<string>;
   readonly connectMode?: boolean;
   readonly connectingFrom?: string;
+  readonly selectedConnectorId?: string;
 }
 
 /** BoardCanvas を描画し、各コールバックの呼び出しを記録する。 */
@@ -55,6 +56,8 @@ function renderCanvas(options: RenderOptions = {}) {
     onViewportChange: vi.fn(),
     onSelect: vi.fn(),
     onSelectMany: vi.fn(),
+    onSelectConnector: vi.fn(),
+    onReconnect: vi.fn(),
     onMoveSelected: vi.fn(),
     onResizeItem: vi.fn(),
     onDeleteSelected: vi.fn(),
@@ -70,6 +73,9 @@ function renderCanvas(options: RenderOptions = {}) {
       viewport={options.viewport ?? createViewport()}
       selectedIds={options.selectedIds ?? new Set()}
       connectMode={options.connectMode ?? false}
+      {...(options.selectedConnectorId !== undefined
+        ? { selectedConnectorId: options.selectedConnectorId }
+        : {})}
       {...(options.connectingFrom !== undefined
         ? { connectingFrom: options.connectingFrom }
         : {})}
@@ -1099,5 +1105,182 @@ describe("BoardCanvas: Space によるパンの切り替え", () => {
     fireEvent.pointerDown(canvas, { button: 0, clientX: 400, clientY: 400 });
     fireEvent.pointerMove(window, { clientX: -10, clientY: -10 });
     expect(onSelectMany).toHaveBeenCalled();
+  });
+});
+
+describe("BoardCanvas: 線の選択", () => {
+  it("線をクリックすると選択を通知する", () => {
+    const { canvas, onSelectConnector } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 50 });
+    expect(onSelectConnector).toHaveBeenCalledWith("c1");
+  });
+
+  it("線を掴んでもパンや範囲選択にはしない", () => {
+    const { canvas, onViewportChange, onSelectMany } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 260, clientY: 50 });
+    expect(onViewportChange).not.toHaveBeenCalled();
+    expect(onSelectMany).not.toHaveBeenCalled();
+  });
+
+  it("何もない場所では選択解除を通知する", () => {
+    const { canvas, onSelectConnector } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 400 });
+    expect(onSelectConnector).toHaveBeenCalledWith(null);
+  });
+
+  it("アイテムを掴んだときも線の選択を外す", () => {
+    const { canvas, onSelectConnector } = renderCanvas({
+      board: boardWithConnector(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    expect(onSelectConnector).toHaveBeenCalledWith(null);
+  });
+
+  it("選択中の線の端点にハンドルを描く", () => {
+    renderCanvas({
+      board: boardWithConnector(),
+      selectedConnectorId: "c1",
+    });
+    // 端点は (100, 50) と (300, 50)
+    const arcs = canvasStub.mock.callsOf("arc").map((call) => call.args.slice(0, 2));
+    expect(arcs).toContainEqual([100, 50]);
+    expect(arcs).toContainEqual([300, 50]);
+  });
+
+  it("選択していない線にはハンドルを描かない", () => {
+    renderCanvas({ board: boardWithConnector() });
+    expect(canvasStub.mock.callsOf("arc")).toHaveLength(0);
+  });
+});
+
+describe("BoardCanvas: 線の接続先の付け替え", () => {
+  /** 付箋 3 枚と、1〜2 を結ぶコネクタを持つボード。 */
+  function boardWithThree() {
+    let board = createBoard({ id: "b1" });
+    for (const [id, x] of [
+      ["a", 0],
+      ["b", 300],
+      ["c", 600],
+    ] as const) {
+      board = addItem(
+        board,
+        createStickyNote({ id, x, y: 0, width: 100, height: 100 }),
+      );
+    }
+    return addConnector(
+      board,
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "b" }),
+    );
+  }
+
+  it("終点のハンドルを別のアイテムへ運ぶと繋ぎ替える", () => {
+    const { canvas, onReconnect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    // 終点は (300, 50)。3 枚目の中へ運ぶ
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    expect(onReconnect).toHaveBeenCalledWith("c1", "to", "c");
+  });
+
+  it("始点のハンドルも運べる", () => {
+    const { canvas, onReconnect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    expect(onReconnect).toHaveBeenCalledWith("c1", "from", "c");
+  });
+
+  it("アイテムの外へ運んでも繋ぎ替えない", () => {
+    const { canvas, onReconnect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 400, clientY: 400 });
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("端点はアイテムより優先して掴む", () => {
+    const { canvas, onSelect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    // 終点 (300, 50) は 2 枚目の左端でもある
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("端点から離れた線の途中を押しても付け替えにはならない", () => {
+    const { canvas, onReconnect, onSelectConnector } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    // 線の中ほど。端点 (100,50) と (300,50) のどちらからも離れている
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onSelectConnector).toHaveBeenCalledWith("c1");
+  });
+
+  it("選択していない線の端点は掴めない", () => {
+    const { canvas, onReconnect, onSelect } = renderCanvas({
+      board: boardWithThree(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalled();
+  });
+
+  it("選択 id に対応する線が無ければ掴めない", () => {
+    const { canvas, onReconnect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "missing",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("接続先が失われた線の端点は掴めない", () => {
+    let board = createBoard({ id: "b1" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addConnector(
+      board,
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "missing" }),
+    );
+    const { canvas, onReconnect } = renderCanvas({
+      board,
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 60, clientY: 60 });
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("付け替えは 1 回の取り消し単位にまとめる", () => {
+    const { canvas, onBeginInteraction, onEndInteraction } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
+    fireEvent.pointerUp(window);
+    expect(onBeginInteraction).toHaveBeenCalled();
+    expect(onEndInteraction).toHaveBeenCalled();
   });
 });

@@ -426,3 +426,52 @@ body,
   white-space: nowrap;
   cursor: pointer;
 }
+
+.connector-properties {
+  position: absolute;
+  left: 16px;
+  top: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 10px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  color: var(--toolbar-text);
+  font-size: 12px;
+}
+
+.connector-properties label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.connector-properties select {
+  padding: 3px 6px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.connector-properties button {
+  padding: 4px 10px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.connector-properties button:hover {
+  background: var(--toolbar-hover);
+}

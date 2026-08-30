@@ -10,7 +10,7 @@ import { connectorPath } from "../domain/connectorPath";
 import type { Rect } from "../domain/geometry";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
-import { drawConnector } from "./connectorRenderer";
+import { drawConnector, drawConnectorHandles } from "./connectorRenderer";
 import { SELECTION_COLOR, SELECTION_RECT_FILL } from "./palette";
 import {
   drawItem,
@@ -185,15 +185,15 @@ function drawConnectors(
     if (fromItem === undefined || toItem === undefined) {
       continue;
     }
-    drawConnector(
-      ctx,
-      connectorPath(connector.kind, fromItem, toItem),
-      options.viewport.scale,
-      {
-        selected: connector.id === options.selectedConnectorId,
-        arrow: connector.arrow,
-      },
-    );
+    const path = connectorPath(connector.kind, fromItem, toItem);
+    const selected = connector.id === options.selectedConnectorId;
+    drawConnector(ctx, path, options.viewport.scale, {
+      selected,
+      arrow: connector.arrow,
+    });
+    if (selected) {
+      drawConnectorHandles(ctx, path, options.viewport.scale);
+    }
   }
 }
 

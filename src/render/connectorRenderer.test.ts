@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorPath } from "../domain/connectorPath";
 import { createMockContext } from "../test/mockCanvas";
-import { CONNECTOR_COLOR, drawConnector } from "./connectorRenderer";
+import {
+  CONNECTOR_COLOR,
+  connectorEnds,
+  drawConnector,
+  drawConnectorHandles,
+} from "./connectorRenderer";
 import { SELECTION_COLOR } from "./palette";
 
 const straight: ConnectorPath = {
@@ -140,5 +145,49 @@ describe("drawConnector: 矢印", () => {
       arrow: true,
     });
     expect(mock.callsOf("closePath")).toHaveLength(0);
+  });
+});
+
+describe("connectorEnds", () => {
+  it("折れ線の両端を返す", () => {
+    expect(connectorEnds(elbow)).toEqual([
+      { end: "from", point: { x: 0, y: 0 } },
+      { end: "to", point: { x: 100, y: 100 } },
+    ]);
+  });
+
+  it("曲線の両端を返す", () => {
+    expect(connectorEnds(curve)).toEqual([
+      { end: "from", point: { x: 0, y: 0 } },
+      { end: "to", point: { x: 100, y: 100 } },
+    ]);
+  });
+
+  it("点が無ければ空を返す", () => {
+    expect(connectorEnds({ kind: "polyline", points: [] })).toEqual([]);
+  });
+});
+
+describe("drawConnectorHandles", () => {
+  it("両端に円を描く", () => {
+    const mock = createMockContext();
+    drawConnectorHandles(mock.ctx, straight, 1);
+    const arcs = mock.callsOf("arc").map((call) => call.args.slice(0, 2));
+    expect(arcs).toEqual([
+      [0, 0],
+      [100, 0],
+    ]);
+  });
+
+  it("拡大率に反比例した大きさにする", () => {
+    const mock = createMockContext();
+    drawConnectorHandles(mock.ctx, straight, 4);
+    expect(mock.callsOf("arc")[0]?.args[2]).toBe(1);
+  });
+
+  it("点が無ければ何も描かない", () => {
+    const mock = createMockContext();
+    drawConnectorHandles(mock.ctx, { kind: "polyline", points: [] }, 1);
+    expect(mock.callsOf("arc")).toHaveLength(0);
   });
 });

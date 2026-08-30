@@ -14,6 +14,7 @@ import {
   createBoard,
   createConnector,
   type Board,
+  type Connector,
   type ConnectorId,
   type ConnectorKind,
   type Item,
@@ -45,6 +46,8 @@ export interface BoardState {
   readonly viewport: Viewport;
   /** 選択中のアイテム id。 */
   readonly selectedIds: ReadonlySet<ItemId>;
+  /** 選択中のコネクタ。アイテムとは同時に選択しない。 */
+  readonly selectedConnectorId: ConnectorId | null;
 
   /** 保存先のパス。まだ保存していなければ null。 */
   readonly filePath: string | null;
@@ -116,7 +119,15 @@ export interface BoardState {
   ): ConnectorId | null;
   /** 既存のコネクタの矢印の有無を切り替える。 */
   toggleConnectorArrow(id: ConnectorId): void;
+  /** コネクタの設定を差し替える。 */
+  replaceConnector(connector: Connector): void;
+  /** コネクタの接続先を付け替える。 */
+  reconnect(id: ConnectorId, end: "from" | "to", itemId: ItemId): void;
   removeConnector(id: ConnectorId): void;
+  /** コネクタを選択する。null なら選択解除。 */
+  selectConnector(id: ConnectorId | null): void;
+  /** 選択中のコネクタを削除する。 */
+  removeSelectedConnector(): void;
 
   /** 選択中のアイテムの重なり順を変える。 */
   bringSelectedToFront(): void;
@@ -199,6 +210,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         savedBoard: board,
         filePath,
         selectedIds: new Set<ItemId>(),
+        selectedConnectorId: null,
         viewport: createViewport(),
         past: [],
         future: [],
@@ -210,6 +222,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       board: initialBoard,
       viewport: createViewport(),
       selectedIds: new Set<ItemId>(),
+      selectedConnectorId: null,
       filePath: null,
       savedBoard: initialBoard,
       past: [],
@@ -401,6 +414,65 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         return id;
       },
 
+      replaceConnector(connector) {
+        set((state) =>
+          withBoard(state, {
+            ...state.board,
+            connectors: state.board.connectors.map((existing) =>
+              existing.id === connector.id ? connector : existing,
+            ),
+          }),
+        );
+      },
+
+      reconnect(id, end, itemId) {
+        set((state) => {
+          const target = state.board.connectors.find(
+            (connector) => connector.id === id,
+          );
+          if (target === undefined) {
+            return state;
+          }
+          const next =
+            end === "from"
+              ? { ...target, fromItemId: itemId }
+              : { ...target, toItemId: itemId };
+          // 同じアイテム同士は線として描けないので付け替えない
+          if (next.fromItemId === next.toItemId) {
+            return state;
+          }
+          return withBoard(state, {
+            ...state.board,
+            connectors: state.board.connectors.map((connector) =>
+              connector.id === id ? next : connector,
+            ),
+          });
+        });
+      },
+
+      selectConnector(id) {
+        // アイテムとコネクタは同時に選ばない。操作の対象を一つに絞る。
+        set({
+          selectedConnectorId: id,
+          selectedIds: id === null ? get().selectedIds : new Set<ItemId>(),
+        });
+      },
+
+      removeSelectedConnector() {
+        set((state) => {
+          if (state.selectedConnectorId === null) {
+            return state;
+          }
+          return {
+            ...withBoard(
+              state,
+              removeConnectors(state.board, [state.selectedConnectorId]),
+            ),
+            selectedConnectorId: null,
+          };
+        });
+      },
+
       toggleConnectorArrow(id) {
         set((state) => {
           const connectors = state.board.connectors.map((connector) =>
@@ -433,7 +505,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       },
 
       selectOnly(id) {
-        set({ selectedIds: new Set([id]) });
+        set({ selectedIds: new Set([id]), selectedConnectorId: null });
       },
 
       toggleSelection(id) {
@@ -449,11 +521,11 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       },
 
       selectMany(ids) {
-        set({ selectedIds: new Set(ids) });
+        set({ selectedIds: new Set(ids), selectedConnectorId: null });
       },
 
       clearSelection() {
-        set({ selectedIds: new Set<ItemId>() });
+        set({ selectedIds: new Set<ItemId>(), selectedConnectorId: null });
       },
 
       selectedItems() {
