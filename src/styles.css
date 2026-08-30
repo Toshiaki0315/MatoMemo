@@ -191,3 +191,38 @@ body,
   color: inherit;
   font: inherit;
 }
+
+.error-banner {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid #e5a1a1;
+  border-radius: 10px;
+  background: #fdeaea;
+  color: #8a2c2c;
+  font-size: 13px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.error-banner button {
+  flex: none;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.error-banner button:hover {
+  background: rgba(0, 0, 0, 0.07);
+}

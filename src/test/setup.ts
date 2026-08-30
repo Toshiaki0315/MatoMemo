@@ -48,6 +48,27 @@ if (typeof globalThis.PointerEvent === "undefined") {
     PointerEventPolyfill as unknown as typeof PointerEvent;
 }
 
+/**
+ * jsdom は `ImageData` も実装していない。BMP をデコードして Canvas に
+ * 描き戻す処理のテストに必要なので、最小限の実装を用意する。
+ */
+if (typeof globalThis.ImageData === "undefined") {
+  class ImageDataPolyfill {
+    readonly data: Uint8ClampedArray;
+    readonly width: number;
+    readonly height: number;
+    readonly colorSpace = "srgb" as const;
+
+    constructor(data: Uint8ClampedArray, width: number, height?: number) {
+      this.data = data;
+      this.width = width;
+      this.height = height ?? data.length / 4 / width;
+    }
+  }
+
+  globalThis.ImageData = ImageDataPolyfill as unknown as typeof ImageData;
+}
+
 afterEach(() => {
   cleanup();
 });

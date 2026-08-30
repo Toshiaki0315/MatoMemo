@@ -412,3 +412,94 @@ describe("App: フォント設定", () => {
     expect(store.getState().board.items[0]).toMatchObject({ fontSize: 48 });
   });
 });
+
+describe("App: 画像の取り込み", () => {
+  const imported = {
+    source: "data:image/png;base64,AAA",
+    naturalWidth: 200,
+    naturalHeight: 100,
+  };
+
+  function renderWithPicker(picker: () => Promise<typeof imported | null>) {
+    return render(<App store={store} imagePicker={picker} />);
+  }
+
+  it("選んだ画像をアイテムとして追加する", async () => {
+    renderWithPicker(async () => imported);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    expect(store.getState().board.items).toMatchObject([
+      { type: "image", naturalWidth: 200, naturalHeight: 100 },
+    ]);
+  });
+
+  it("原寸の縦横比を保った表示サイズで追加する", async () => {
+    renderWithPicker(async () => imported);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    const item = store.getState().board.items[0];
+    expect((item?.width ?? 0) / (item?.height ?? 1)).toBeCloseTo(2, 10);
+  });
+
+  it("キャンセルされたら何も追加しない", async () => {
+    renderWithPicker(async () => null);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("失敗したらメッセージを出す", async () => {
+    renderWithPicker(async () => {
+      throw new Error("対応していない画像形式です。");
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "対応していない画像形式です。",
+    );
+  });
+
+  it("Error 以外が投げられても既定のメッセージを出す", async () => {
+    renderWithPicker(async () => {
+      throw "文字列";
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "画像を取り込めませんでした。",
+    );
+  });
+
+  it("メッセージを閉じられる", async () => {
+    renderWithPicker(async () => {
+      throw new Error("失敗しました。");
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("画像アイテムはダブルクリックしても編集欄を出さない", async () => {
+    renderWithPicker(async () => imported);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像" }));
+    });
+    const item = store.getState().board.items[0];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+
+  it("既定では実際の画像ピッカーを使う", () => {
+    expect(() => render(<App store={store} />)).not.toThrow();
+  });
+});

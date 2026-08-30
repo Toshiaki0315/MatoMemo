@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  createImage,
   createShape,
   createStickyNote,
   createText,
@@ -16,11 +17,13 @@ import {
   zoomAt,
   createViewport,
 } from "../domain/viewport";
+import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas } from "./BoardCanvas";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 import { TextPropertiesPanel } from "./TextPropertiesPanel";
 import { Toolbar } from "./Toolbar";
+import { useImageCache } from "./useImageCache";
 
 /** ズームボタン 1 回あたりの倍率。 */
 const ZOOM_STEP = 1.25;
@@ -35,6 +38,8 @@ export interface AppProps {
    * テストでは独立したインスタンスを渡す。
    */
   readonly store?: BoardStore;
+  /** 画像を選ばせる手段。テストでは差し替える。 */
+  readonly imagePicker?: ImagePicker;
 }
 
 /** テキストを内包できるアイテムか。 */
@@ -45,7 +50,10 @@ function isTextEditable(item: Item | undefined): item is TextEditableItem {
   );
 }
 
-export function App({ store = useBoardStore }: AppProps = {}) {
+export function App({
+  store = useBoardStore,
+  imagePicker = pickImage,
+}: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
   const selectedIds = store((state) => state.selectedIds);
@@ -60,6 +68,9 @@ export function App({ store = useBoardStore }: AppProps = {}) {
 
   /** 編集中のアイテム。null なら編集していない。 */
   const [editingId, setEditingId] = useState<ItemId | null>(null);
+  /** 画像の取り込みに失敗したときのメッセージ。 */
+  const [error, setError] = useState<string | null>(null);
+  const images = useImageCache(board.items);
   const editingItem = editingId === null ? undefined : findItem(board, editingId);
 
   /** テキストアイテムを 1 つだけ選んでいるときにフォント設定を出す。 */
@@ -114,6 +125,24 @@ export function App({ store = useBoardStore }: AppProps = {}) {
     [board],
   );
 
+  const handleAddImage = useCallback(async () => {
+    setError(null);
+    try {
+      const imported = await imagePicker();
+      if (imported === null) {
+        return;
+      }
+      const { x, y } = nextItemPosition();
+      addItem((id) => createImage({ id, x, y, ...imported }));
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "画像を取り込めませんでした。",
+      );
+    }
+  }, [addItem, imagePicker, nextItemPosition]);
+
   const handleSelect = useCallback(
     (id: ItemId | null, additive: boolean) => {
       // 別のアイテムを触ったら編集を終える
@@ -158,6 +187,7 @@ export function App({ store = useBoardStore }: AppProps = {}) {
         onMoveSelected={moveSelected}
         onDeleteSelected={removeSelected}
         onActivateItem={handleActivateItem}
+        images={images}
         {...(editingId !== null ? { editingItemId: editingId } : {})}
       />
 
@@ -186,9 +216,19 @@ export function App({ store = useBoardStore }: AppProps = {}) {
         onAddSticky={handleAddSticky}
         onAddShape={handleAddShape}
         onAddText={handleAddText}
+        onAddImage={handleAddImage}
         canDelete={selectedIds.size > 0}
         onDeleteSelected={removeSelected}
       />
+
+      {error === null ? null : (
+        <div className="error-banner" role="alert">
+          {error}
+          <button type="button" onClick={() => setError(null)} aria-label="閉じる">
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="zoom-controls">
         <button

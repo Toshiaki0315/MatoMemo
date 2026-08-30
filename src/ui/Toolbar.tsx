@@ -12,6 +12,7 @@ export interface ToolbarProps {
   readonly onAddSticky: (color: StickyColor) => void;
   readonly onAddShape: (shape: ShapeKind) => void;
   readonly onAddText: () => void;
+  readonly onAddImage: () => void;
   readonly canDelete: boolean;
   readonly onDeleteSelected: () => void;
 }
@@ -30,6 +31,7 @@ export function Toolbar({
   onAddSticky,
   onAddShape,
   onAddText,
+  onAddImage,
   canDelete,
   onDeleteSelected,
 }: ToolbarProps) {
@@ -62,6 +64,9 @@ export function Toolbar({
         </button>
         <button type="button" onClick={onAddText}>
           テキスト
+        </button>
+        <button type="button" onClick={onAddImage}>
+          画像
         </button>
       </div>
 
