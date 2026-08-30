@@ -519,10 +519,6 @@ export function App({
         onSaveAs={handleSaveAs}
         onExportMarkdown={handleExportMarkdown}
         busy={busy}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
       />
 
       <BoardCanvas
@@ -583,6 +579,10 @@ export function App({
         onChangeConnectorKind={setConnectorKind}
         connectorArrow={connectorArrow}
         onChangeConnectorArrow={setConnectorArrow}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
       />
 
       {menu === null ? null : (

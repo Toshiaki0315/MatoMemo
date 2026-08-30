@@ -26,6 +26,10 @@ export interface ToolbarProps {
   readonly onChangeConnectorKind: (kind: ConnectorKind) => void;
   readonly connectorArrow: boolean;
   readonly onChangeConnectorArrow: (arrow: boolean) => void;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly onUndo: () => void;
+  readonly onRedo: () => void;
 }
 
 /** コネクタの種類の表示名。 */
@@ -58,9 +62,36 @@ export function Toolbar({
   onChangeConnectorKind,
   connectorArrow,
   onChangeConnectorArrow,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: ToolbarProps) {
   return (
     <div className="toolbar" role="toolbar" aria-label="アイテムの追加">
+      <div className="toolbar-group">
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="元に戻す"
+          title="元に戻す (⌘Z)"
+        >
+          ↩
+        </button>
+        <button
+          type="button"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="やり直す"
+          title="やり直す (⇧⌘Z)"
+        >
+          ↪
+        </button>
+      </div>
+
+      <div className="toolbar-separator" />
+
       <div className="toolbar-group" role="group" aria-label="付箋を追加">
         {STICKY_COLORS.map((color) => (
           <button

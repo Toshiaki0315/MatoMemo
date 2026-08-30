@@ -85,14 +85,26 @@ body,
   background: var(--toolbar-hover);
 }
 
+/*
+ * 中央寄せに left: 50% + translateX(-50%) は使わない。
+ * 絶対配置の幅は「left からコンテナ右端まで」に制限されるため、
+ * 折り返しありだと画面の半分の幅で折り返してしまう。
+ * left/right を 0 にして margin: auto で中央に寄せる。
+ */
 .toolbar {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 16px;
-  transform: translateX(-50%);
+  width: fit-content;
+  margin: 0 auto;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  /* 窓を狭めても画面外へはみ出さず、収まらなければ折り返す */
+  max-width: calc(100% - 32px);
+  flex-wrap: wrap;
   padding: 6px;
   border: 1px solid var(--toolbar-border);
   border-radius: 12px;
@@ -203,9 +215,11 @@ body,
 
 .error-banner {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   top: 16px;
-  transform: translateX(-50%);
+  width: fit-content;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -310,6 +324,9 @@ body,
   display: flex;
   align-items: center;
   gap: 6px;
+  /* ズーム表示と重ならないところまでに収め、収まらなければ折り返す */
+  max-width: calc(100% - 180px);
+  flex-wrap: wrap;
   padding: 6px 8px;
   border: 1px solid var(--toolbar-border);
   border-radius: 12px;
@@ -319,7 +336,7 @@ body,
 }
 
 .file-bar .board-name {
-  width: 180px;
+  width: 150px;
   padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: 6px;

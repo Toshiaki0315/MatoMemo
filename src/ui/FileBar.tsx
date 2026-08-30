@@ -14,10 +14,6 @@ export interface FileBarProps {
   readonly onExportMarkdown: () => void;
   /** 保存処理の実行中か。 */
   readonly busy?: boolean;
-  readonly canUndo: boolean;
-  readonly canRedo: boolean;
-  readonly onUndo: () => void;
-  readonly onRedo: () => void;
 }
 
 export function FileBar({
@@ -30,10 +26,6 @@ export function FileBar({
   onSaveAs,
   onExportMarkdown,
   busy = false,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
 }: FileBarProps) {
   return (
     <div className="file-bar" role="group" aria-label="ファイル操作">
@@ -69,27 +61,6 @@ export function FileBar({
       </button>
       <button type="button" onClick={onExportMarkdown} disabled={busy}>
         Markdown 出力
-      </button>
-
-      <div className="toolbar-separator" />
-
-      <button
-        type="button"
-        onClick={onUndo}
-        disabled={!canUndo}
-        aria-label="元に戻す"
-        title="元に戻す (⌘Z)"
-      >
-        ↩
-      </button>
-      <button
-        type="button"
-        onClick={onRedo}
-        disabled={!canRedo}
-        aria-label="やり直す"
-        title="やり直す (⇧⌘Z)"
-      >
-        ↪
       </button>
     </div>
   );
