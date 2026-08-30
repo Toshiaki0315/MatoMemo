@@ -2,6 +2,20 @@
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP",
     sans-serif;
   color-scheme: light dark;
+
+  --toolbar-bg: rgba(255, 255, 255, 0.82);
+  --toolbar-border: rgba(0, 0, 0, 0.1);
+  --toolbar-text: #2b2b2b;
+  --toolbar-hover: rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --toolbar-bg: rgba(36, 41, 54, 0.85);
+    --toolbar-border: rgba(255, 255, 255, 0.12);
+    --toolbar-text: #e8eaf0;
+    --toolbar-hover: rgba(255, 255, 255, 0.1);
+  }
 }
 
 * {
@@ -14,4 +28,51 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
+}
+
+.app {
+  position: relative;
+  height: 100%;
+}
+
+.board-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* macOS のラバーバンドとページ全体のピンチズームを抑止する */
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.zoom-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--toolbar-border);
+  border-radius: 10px;
+  background: var(--toolbar-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+.zoom-controls button {
+  min-width: 36px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--toolbar-text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover {
+  background: var(--toolbar-hover);
 }
