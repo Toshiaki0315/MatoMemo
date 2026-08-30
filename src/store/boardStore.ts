@@ -112,7 +112,10 @@ export interface BoardState {
     fromItemId: ItemId,
     toItemId: ItemId,
     kind: ConnectorKind,
+    arrow?: boolean,
   ): ConnectorId | null;
+  /** 既存のコネクタの矢印の有無を切り替える。 */
+  toggleConnectorArrow(id: ConnectorId): void;
   removeConnector(id: ConnectorId): void;
 
   /** 選択中のアイテムの重なり順を変える。 */
@@ -369,7 +372,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      connectItems(fromItemId, toItemId, kind) {
+      connectItems(fromItemId, toItemId, kind, arrow = false) {
         // 自分自身への接続は線として描けないため作らない
         if (fromItemId === toItemId) {
           return null;
@@ -391,11 +394,22 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
             state,
             addConnectorToBoard(
               state.board,
-              createConnector({ id, fromItemId, toItemId, kind }),
+              createConnector({ id, fromItemId, toItemId, kind, arrow }),
             ),
           ),
         );
         return id;
+      },
+
+      toggleConnectorArrow(id) {
+        set((state) => {
+          const connectors = state.board.connectors.map((connector) =>
+            connector.id === id
+              ? { ...connector, arrow: !connector.arrow }
+              : connector,
+          );
+          return withBoard(state, { ...state.board, connectors });
+        });
       },
 
       removeConnector(id) {

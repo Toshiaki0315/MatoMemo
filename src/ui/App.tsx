@@ -86,6 +86,7 @@ export function App({
   const selectMany = store((state) => state.selectMany);
   const connectItems = store((state) => state.connectItems);
   const removeConnector = store((state) => state.removeConnector);
+  const toggleConnectorArrow = store((state) => state.toggleConnectorArrow);
   const filePath = store((state) => state.filePath);
   const savedBoard = store((state) => state.savedBoard);
   const renameBoard = store((state) => state.renameBoard);
@@ -120,6 +121,8 @@ export function App({
   const [connectingFrom, setConnectingFrom] = useState<ItemId | null>(null);
   /** これから引くコネクタの種類。 */
   const [connectorKind, setConnectorKind] = useState<ConnectorKind>("straight");
+  /** これから引くコネクタに矢印を付けるか。 */
+  const [connectorArrow, setConnectorArrow] = useState(false);
   /** ファイル操作の実行中か。 */
   const [busy, setBusy] = useState(false);
   /** 未保存の変更の確認待ちになっている操作。 */
@@ -302,12 +305,12 @@ export function App({
         if (from === null) {
           return id;
         }
-        connectItems(from, id, connectorKind);
+        connectItems(from, id, connectorKind, connectorArrow);
         // 続けて別の線を引けるよう、始点を空にしてモードは維持する
         return null;
       });
     },
-    [connectItems, connectorKind],
+    [connectItems, connectorArrow, connectorKind],
   );
 
   /** 接続モードの開始・終了。 */
@@ -460,6 +463,8 @@ export function App({
         onToggleConnectMode={toggleConnectMode}
         connectorKind={connectorKind}
         onChangeConnectorKind={setConnectorKind}
+        connectorArrow={connectorArrow}
+        onChangeConnectorArrow={setConnectorArrow}
       />
 
       {menu === null ? null : (
@@ -469,6 +474,10 @@ export function App({
           actions={
             menu.target.kind === "connector"
               ? [
+                  {
+                    label: "矢印を切り替え",
+                    onSelect: () => toggleConnectorArrow(menu.target.id),
+                  },
                   {
                     label: "線を削除",
                     onSelect: () => removeConnector(menu.target.id),

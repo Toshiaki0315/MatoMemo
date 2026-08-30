@@ -217,6 +217,7 @@ describe("createConnector", () => {
         kind: "straight",
         fromItemId: "a",
         toItemId: "b",
+        arrow: false,
       },
     );
   });
@@ -230,5 +231,16 @@ describe("createConnector", () => {
         kind: "curved",
       }).kind,
     ).toBe("curved");
+  });
+
+  it("矢印の有無を指定できる", () => {
+    expect(
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        arrow: true,
+      }).arrow,
+    ).toBe(true);
   });
 });

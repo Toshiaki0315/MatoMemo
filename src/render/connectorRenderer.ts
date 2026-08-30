@@ -2,7 +2,7 @@
  * コネクタ（アイテム同士を結ぶ線）の描画。
  */
 
-import type { ConnectorPath } from "../domain/connectorPath";
+import { arrowHead, type ConnectorPath } from "../domain/connectorPath";
 import type { Point } from "../domain/geometry";
 import { SELECTION_COLOR } from "./palette";
 
@@ -17,6 +17,8 @@ const CORNER_RADIUS = 8;
 
 export interface DrawConnectorOptions {
   readonly selected?: boolean;
+  /** 終点に矢印を描くか。 */
+  readonly arrow?: boolean;
 }
 
 /** コネクタ 1 本を描く。 */
@@ -46,6 +48,28 @@ export function drawConnector(
     tracePolyline(ctx, path.points);
   }
   ctx.stroke();
+
+  if (options.arrow === true) {
+    drawArrowHead(ctx, path);
+  }
+}
+
+/** 終点に矢羽根を描く。線と同じ色で塗りつぶす。 */
+function drawArrowHead(
+  ctx: CanvasRenderingContext2D,
+  path: ConnectorPath,
+): void {
+  const head = arrowHead(path);
+  if (head === null) {
+    return;
+  }
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.beginPath();
+  ctx.moveTo(head.tip.x, head.tip.y);
+  ctx.lineTo(head.left.x, head.left.y);
+  ctx.lineTo(head.right.x, head.right.y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 /**

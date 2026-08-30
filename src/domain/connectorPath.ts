@@ -198,3 +198,54 @@ export function connectorPath(
       return straightPath(from, to, fromItem, toItem);
   }
 }
+
+/** 矢羽根の長さ（ワールド座標）。 */
+export const ARROW_LENGTH = 12;
+
+/** 矢羽根の開き角（ラジアン）。 */
+const ARROW_SPREAD = Math.PI / 7;
+
+/** 矢印の三角形。`tip` が線の終点。 */
+export interface ArrowHead {
+  readonly tip: Point;
+  readonly left: Point;
+  readonly right: Point;
+}
+
+/**
+ * 終点に描く矢羽根の 3 点を返す。
+ *
+ * 向きは終点と、その手前の点（曲線ならベジェの制御点）から決める。
+ * 経路の種類によらず「線が入ってくる向き」に矢印を合わせられる。
+ */
+export function arrowHead(path: ConnectorPath): ArrowHead | null {
+  const { tip, previous } =
+    path.kind === "curve"
+      ? { tip: path.to, previous: path.control2 }
+      : {
+          tip: path.points.at(-1),
+          previous: path.points.at(-2),
+        };
+
+  if (tip === undefined || previous === undefined) {
+    return null;
+  }
+  const dx = tip.x - previous.x;
+  const dy = tip.y - previous.y;
+  if (dx === 0 && dy === 0) {
+    return null;
+  }
+
+  const angle = Math.atan2(dy, dx);
+  return {
+    tip,
+    left: {
+      x: tip.x - ARROW_LENGTH * Math.cos(angle - ARROW_SPREAD),
+      y: tip.y - ARROW_LENGTH * Math.sin(angle - ARROW_SPREAD),
+    },
+    right: {
+      x: tip.x - ARROW_LENGTH * Math.cos(angle + ARROW_SPREAD),
+      y: tip.y - ARROW_LENGTH * Math.sin(angle + ARROW_SPREAD),
+    },
+  };
+}

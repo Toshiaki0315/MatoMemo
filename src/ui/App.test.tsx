@@ -777,6 +777,33 @@ describe("App: コネクタ", () => {
     expect(store.getState().board.connectors).toEqual([]);
   });
 
+  it("矢印付きの線を引ける", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("checkbox", { name: "矢印" }));
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+  });
+
+  it("メニューから矢印を切り替えられる", () => {
+    renderApp();
+    addTwoStickies();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    clickItem(0);
+    clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    const [first, second] = store.getState().board.items;
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      clientY: (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "矢印を切り替え" }));
+    expect(store.getState().board.connectors[0]?.arrow).toBe(true);
+  });
+
   it("線を右クリックすると削除メニューが出る", () => {
     renderApp();
     addTwoStickies();

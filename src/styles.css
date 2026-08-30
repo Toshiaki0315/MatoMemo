@@ -415,3 +415,14 @@ body,
   background: var(--toolbar-active);
   color: var(--toolbar-active-text);
 }
+
+.connector-arrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  color: var(--toolbar-text);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}

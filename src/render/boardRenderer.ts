@@ -189,7 +189,10 @@ function drawConnectors(
       ctx,
       connectorPath(connector.kind, fromItem, toItem),
       options.viewport.scale,
-      { selected: connector.id === options.selectedConnectorId },
+      {
+        selected: connector.id === options.selectedConnectorId,
+        arrow: connector.arrow,
+      },
     );
   }
 }

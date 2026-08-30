@@ -24,6 +24,8 @@ export interface ToolbarProps {
   readonly onToggleConnectMode: () => void;
   readonly connectorKind: ConnectorKind;
   readonly onChangeConnectorKind: (kind: ConnectorKind) => void;
+  readonly connectorArrow: boolean;
+  readonly onChangeConnectorArrow: (arrow: boolean) => void;
 }
 
 /** コネクタの種類の表示名。 */
@@ -54,6 +56,8 @@ export function Toolbar({
   onToggleConnectMode,
   connectorKind,
   onChangeConnectorKind,
+  connectorArrow,
+  onChangeConnectorArrow,
 }: ToolbarProps) {
   return (
     <div className="toolbar" role="toolbar" aria-label="アイテムの追加">
@@ -116,6 +120,14 @@ export function Toolbar({
               </option>
             ))}
           </select>
+        </label>
+        <label className="connector-arrow">
+          <input
+            type="checkbox"
+            checked={connectorArrow}
+            onChange={(event) => onChangeConnectorArrow(event.target.checked)}
+          />
+          矢印
         </label>
       </div>
 

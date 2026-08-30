@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createShape, createStickyNote, type Item } from "./board";
 import {
+  ARROW_LENGTH,
+  arrowHead,
   boundaryAnchor,
   connectorPath,
   sideAnchor,
@@ -252,5 +254,85 @@ describe("connectorPath: アイテムの移動への追従", () => {
     expect(connectorPath("straight", sticky(0, 0), sticky(300, 0))).toEqual(
       connectorPath("straight", sticky(0, 0), sticky(300, 0)),
     );
+  });
+});
+
+describe("arrowHead", () => {
+  it("直線では線の向きに合わせた 3 点を返す", () => {
+    const head = arrowHead({
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ],
+    });
+    expect(head?.tip).toEqual({ x: 100, y: 0 });
+    // 右向きなので矢羽根は終点より左に開く
+    expect(head?.left.x).toBeLessThan(100);
+    expect(head?.right.x).toBeLessThan(100);
+    // 線を挟んで上下に開く
+    expect(
+      Math.sign((head?.left.y ?? 0) * (head?.right.y ?? 0)),
+    ).toBe(-1);
+  });
+
+  it("矢羽根の長さは一定になる", () => {
+    const head = arrowHead({
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 100 },
+      ],
+    });
+    const length = Math.hypot(
+      (head?.left.x ?? 0) - (head?.tip.x ?? 0),
+      (head?.left.y ?? 0) - (head?.tip.y ?? 0),
+    );
+    expect(length).toBeCloseTo(ARROW_LENGTH, 10);
+  });
+
+  it("折れ線では最後の区間の向きに合わせる", () => {
+    const head = arrowHead({
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 100 },
+      ],
+    });
+    // 最後の区間は下向きなので矢羽根は終点より上に開く
+    expect(head?.left.y).toBeLessThan(100);
+    expect(head?.right.y).toBeLessThan(100);
+  });
+
+  it("曲線では終端の制御点との向きに合わせる", () => {
+    const head = arrowHead({
+      kind: "curve",
+      from: { x: 0, y: 0 },
+      control1: { x: 40, y: 0 },
+      control2: { x: 60, y: 100 },
+      to: { x: 100, y: 100 },
+    });
+    expect(head?.tip).toEqual({ x: 100, y: 100 });
+    expect(head?.left.x).toBeLessThan(100);
+  });
+
+  it("点が足りなければ矢印を作らない", () => {
+    expect(arrowHead({ kind: "polyline", points: [] })).toBeNull();
+    expect(
+      arrowHead({ kind: "polyline", points: [{ x: 0, y: 0 }] }),
+    ).toBeNull();
+  });
+
+  it("終点と手前の点が同じなら向きが決まらないので作らない", () => {
+    expect(
+      arrowHead({
+        kind: "polyline",
+        points: [
+          { x: 10, y: 10 },
+          { x: 10, y: 10 },
+        ],
+      }),
+    ).toBeNull();
   });
 });

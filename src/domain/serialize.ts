@@ -207,7 +207,30 @@ function parseConnector(
     ),
     fromItemId: readId(raw, "fromItemId", path, issues),
     toItemId: readId(raw, "toItemId", path, issues),
+    // 矢印は後から加えた項目なので、無い場合は矢印なしとして読む
+    arrow: readOptionalBoolean(raw, "arrow", path, issues),
   };
+}
+
+/**
+ * 真偽値を読み出す。項目が無い場合は false とみなす。
+ * 後から追加した項目を、古い保存ファイルでも読めるようにするため。
+ */
+function readOptionalBoolean(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: Issues,
+): boolean {
+  const value = source[key];
+  if (value === undefined) {
+    return false;
+  }
+  if (typeof value !== "boolean") {
+    issues.push(`${path}.${key} は真偽値である必要があります`);
+    return false;
+  }
+  return value;
 }
 
 /** 配列を読み出す。配列でない場合は問題を記録して空配列を返す。 */

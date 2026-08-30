@@ -463,3 +463,35 @@ describe("parseBoardFile: コネクタの検証", () => {
     ]);
   });
 });
+
+describe("parseBoardFile: 矢印の項目", () => {
+  /** connectors[0] の 1 フィールドを差し替えた JSON を作る。 */
+  function withArrow(value: unknown): string {
+    return boardJson((b) => {
+      const connectors = b["connectors"] as Record<string, unknown>[];
+      b["connectors"] = [{ ...connectors[0], arrow: value }];
+    });
+  }
+
+  it("矢印の有無を復元する", () => {
+    expect(parseBoardFile(withArrow(true)).connectors[0]?.arrow).toBe(true);
+  });
+
+  it("項目が無い古いファイルは矢印なしとして読む", () => {
+    const json = boardJson((b) => {
+      const connectors = b["connectors"] as Record<string, unknown>[];
+      const { arrow: _omitted, ...withoutArrow } = connectors[0] as Record<
+        string,
+        unknown
+      >;
+      b["connectors"] = [withoutArrow];
+    });
+    expect(parseBoardFile(json).connectors[0]?.arrow).toBe(false);
+  });
+
+  it("真偽値でない場合はエラーにする", () => {
+    expect(catchError(withArrow("yes")).issues).toContain(
+      "board.connectors[0].arrow は真偽値である必要があります",
+    );
+  });
+});
