@@ -319,16 +319,18 @@ export function App({
   /** 接続モードでアイテムが選ばれたときの処理。 */
   const handlePickForConnection = useCallback(
     (id: ItemId) => {
-      setConnectingFrom((from) => {
-        if (from === null) {
-          return id;
-        }
-        connectItems(from, id, connectorKind, connectorArrow);
-        // 続けて別の線を引けるよう、始点を空にしてモードは維持する
-        return null;
-      });
+      // 状態更新関数の中でストアを触らない。React は更新関数をレンダリング中に
+      // 呼ぶことがあり、その中で別のコンポーネントを更新すると警告になるうえ、
+      // 二重に呼ばれてコネクタが重複して作られる恐れがある。
+      if (connectingFrom === null) {
+        setConnectingFrom(id);
+        return;
+      }
+      connectItems(connectingFrom, id, connectorKind, connectorArrow);
+      // 続けて別の線を引けるよう、始点を空にしてモードは維持する
+      setConnectingFrom(null);
     },
-    [connectItems, connectorArrow, connectorKind],
+    [connectItems, connectingFrom, connectorArrow, connectorKind],
   );
 
   /** 接続モードの開始・終了。 */
@@ -375,20 +377,25 @@ export function App({
     let stop: (() => void) | undefined;
     let disposed = false;
 
-    void closeGuard(() => {
+    closeGuard(() => {
       // 未保存でなければそのまま閉じてよい
       if (!dirtyRef.current) {
         return true;
       }
       setPending("close");
       return false;
-    }).then((unlisten) => {
-      if (disposed) {
-        unlisten();
-        return;
-      }
-      stop = unlisten;
-    });
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        stop = unlisten;
+      })
+      .catch(() => {
+        // Tauri の外（ブラウザでの開発時など）では購読できない。
+        // 閉じる前の確認が付かないだけなので、編集は続けられるようにする。
+      });
 
     return () => {
       disposed = true;

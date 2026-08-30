@@ -22,8 +22,11 @@ afterEach(() => {
   layout.restore();
 });
 
+/** ウィンドウの閉じる要求は購読しない（Tauri に依存しないため）。 */
+const noopCloseGuard = async () => () => {};
+
 function renderApp() {
-  return render(<App store={store} />);
+  return render(<App store={store} closeGuard={noopCloseGuard} />);
 }
 
 /** 倍率表示（リセットボタン）のラベル。 */
@@ -46,7 +49,7 @@ describe("App: 表示", () => {
   });
 
   it("既定のストアでも描画できる", () => {
-    expect(() => render(<App />)).not.toThrow();
+    expect(() => render(<App closeGuard={noopCloseGuard} />)).not.toThrow();
   });
 });
 
@@ -421,7 +424,9 @@ describe("App: 画像の取り込み", () => {
   };
 
   function renderWithPicker(picker: () => Promise<typeof imported | null>) {
-    return render(<App store={store} imagePicker={picker} />);
+    return render(
+      <App store={store} imagePicker={picker} closeGuard={noopCloseGuard} />,
+    );
   }
 
   it("選んだ画像をアイテムとして追加する", async () => {
@@ -500,7 +505,9 @@ describe("App: 画像の取り込み", () => {
   });
 
   it("既定では実際の画像ピッカーを使う", () => {
-    expect(() => render(<App store={store} />)).not.toThrow();
+    expect(() =>
+      render(<App store={store} closeGuard={noopCloseGuard} />),
+    ).not.toThrow();
   });
 });
 

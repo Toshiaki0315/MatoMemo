@@ -444,10 +444,22 @@ describe("ウィンドウを閉じるときの確認", () => {
     await waitFor(() => expect(requestClose).not.toBeNull());
   }
 
+  /**
+   * 閉じる要求を発火させ、閉じてよいかの判定を返す。
+   * 確認ダイアログの表示は React の状態更新なので act で囲む。
+   */
+  async function fireCloseRequest(): Promise<boolean | undefined> {
+    let result: boolean | undefined;
+    await act(async () => {
+      result = await requestClose?.();
+    });
+    return result;
+  }
+
   it("未保存でなければそのまま閉じる", async () => {
     renderApp();
     await waitForGuard();
-    await expect(requestClose?.()).resolves.toBe(true);
+    expect(await fireCloseRequest()).toBe(true);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -456,10 +468,7 @@ describe("ウィンドウを閉じるときの確認", () => {
     await waitForGuard();
     click("黄色の付箋を追加");
 
-    await expect(requestClose?.()).resolves.toBe(false);
-    await waitFor(() => {
-      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-    });
+    expect(await fireCloseRequest()).toBe(false);
     expect(screen.getByRole("alertdialog")).toHaveTextContent("終了");
   });
 
@@ -467,10 +476,7 @@ describe("ウィンドウを閉じるときの確認", () => {
     renderApp();
     await waitForGuard();
     click("黄色の付箋を追加");
-    await requestClose?.();
-    await waitFor(() =>
-      expect(screen.getByRole("alertdialog")).toBeInTheDocument(),
-    );
+    await fireCloseRequest();
 
     click("保存せずに終了");
     await waitFor(() => expect(closeWindow).toHaveBeenCalled());
@@ -480,10 +486,7 @@ describe("ウィンドウを閉じるときの確認", () => {
     renderApp();
     await waitForGuard();
     click("黄色の付箋を追加");
-    await requestClose?.();
-    await waitFor(() =>
-      expect(screen.getByRole("alertdialog")).toBeInTheDocument(),
-    );
+    await fireCloseRequest();
 
     click("キャンセル");
     expect(closeWindow).not.toHaveBeenCalled();
@@ -498,7 +501,7 @@ describe("ウィンドウを閉じるときの確認", () => {
     click("保存");
     await waitFor(() => expect(fileStore.files.size).toBe(1));
 
-    await expect(requestClose?.()).resolves.toBe(true);
+    expect(await fireCloseRequest()).toBe(true);
   });
 
   it("アンマウントすると購読を解除する", async () => {
@@ -526,5 +529,27 @@ describe("ウィンドウを閉じるときの確認", () => {
     view.unmount();
     resolveGuard?.(unlisten);
     await waitFor(() => expect(unlisten).toHaveBeenCalled());
+  });
+});
+
+describe("Tauri の外で動かした場合", () => {
+  it("閉じる要求を購読できなくても編集は続けられる", async () => {
+    render(
+      <App
+        store={store}
+        fileStore={fileStore}
+        closeGuard={async () => {
+          throw new Error("Tauri がありません");
+        }}
+        closeWindow={closeWindow}
+      />,
+    );
+
+    // 購読の失敗は握りつぶし、アプリは通常どおり使える
+    click("黄色の付箋を追加");
+    await waitFor(() => {
+      expect(store.getState().board.items).toHaveLength(1);
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
