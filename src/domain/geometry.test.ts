@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   clamp,
+  ellipseContainsPoint,
   rectCenter,
   rectContainsPoint,
+  rectContainsRect,
   rectFromCorners,
   rectsIntersect,
 } from "./geometry";
@@ -114,6 +116,66 @@ describe("rectsIntersect", () => {
       false,
     );
     expect(rectsIntersect(base, { x: 0, y: -6, width: 5, height: 5 })).toBe(
+      false,
+    );
+  });
+});
+
+describe("ellipseContainsPoint", () => {
+  const rect = { x: 0, y: 0, width: 100, height: 50 };
+
+  it("中心を含むと判定する", () => {
+    expect(ellipseContainsPoint(rect, { x: 50, y: 25 })).toBe(true);
+  });
+
+  it("縁上の点を含むと判定する", () => {
+    expect(ellipseContainsPoint(rect, { x: 0, y: 25 })).toBe(true);
+    expect(ellipseContainsPoint(rect, { x: 50, y: 0 })).toBe(true);
+  });
+
+  it("外接矩形の角は含まないと判定する", () => {
+    expect(ellipseContainsPoint(rect, { x: 0, y: 0 })).toBe(false);
+    expect(ellipseContainsPoint(rect, { x: 100, y: 50 })).toBe(false);
+  });
+
+  it("外部の点は含まないと判定する", () => {
+    expect(ellipseContainsPoint(rect, { x: -10, y: 25 })).toBe(false);
+  });
+
+  it("幅または高さが 0 なら常に含まないと判定する", () => {
+    expect(
+      ellipseContainsPoint({ x: 0, y: 0, width: 0, height: 50 }, { x: 0, y: 25 }),
+    ).toBe(false);
+    expect(
+      ellipseContainsPoint({ x: 0, y: 0, width: 50, height: 0 }, { x: 25, y: 0 }),
+    ).toBe(false);
+  });
+});
+
+describe("rectContainsRect", () => {
+  const outer = { x: 0, y: 0, width: 100, height: 100 };
+
+  it("完全に含まれる矩形を検出する", () => {
+    expect(rectContainsRect(outer, { x: 10, y: 10, width: 20, height: 20 })).toBe(
+      true,
+    );
+  });
+
+  it("辺が一致する矩形も含まれると判定する", () => {
+    expect(rectContainsRect(outer, outer)).toBe(true);
+  });
+
+  it("はみ出す矩形は含まれないと判定する", () => {
+    expect(rectContainsRect(outer, { x: -1, y: 0, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(rectContainsRect(outer, { x: 0, y: -1, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(rectContainsRect(outer, { x: 90, y: 0, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(rectContainsRect(outer, { x: 0, y: 90, width: 20, height: 20 })).toBe(
       false,
     );
   });

@@ -72,3 +72,29 @@ export function rectsIntersect(a: Rect, b: Rect): boolean {
     b.y <= a.y + a.height
   );
 }
+
+/**
+ * 点が矩形に内接する楕円の内部（縁を含む）にあるかを判定する。
+ * 円形の図形の当たり判定に使う。
+ */
+export function ellipseContainsPoint(rect: Rect, point: Point): boolean {
+  const radiusX = rect.width / 2;
+  const radiusY = rect.height / 2;
+  if (radiusX <= 0 || radiusY <= 0) {
+    return false;
+  }
+  const center = rectCenter(rect);
+  const normalizedX = (point.x - center.x) / radiusX;
+  const normalizedY = (point.y - center.y) / radiusY;
+  return normalizedX * normalizedX + normalizedY * normalizedY <= 1;
+}
+
+/** `inner` が `outer` に完全に含まれるかを判定する。 */
+export function rectContainsRect(outer: Rect, inner: Rect): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
+}
