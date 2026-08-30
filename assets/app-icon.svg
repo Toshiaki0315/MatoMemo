@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    MatoMemo アプリアイコン（暫定）
+
+    キャンバス上の付箋がコネクタで結ばれ、考えが「まとまる」様子を表す。
+    macOS のアイコン規約に合わせ、1024px キャンバスに 824px の角丸正方形を配置。
+    付箋の色はアプリのパステル 6 色パレットから 3 色を採用している。
+
+    再生成: npm run tauri icon assets/app-icon.svg
+  -->
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3D4761" />
+      <stop offset="1" stop-color="#242B3C" />
+    </linearGradient>
+  </defs>
+
+  <!-- ボード（キャンバス） -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#board)" />
+
+  <!-- コネクタ（アイテム同士を結ぶ線） -->
+  <g stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="22" stroke-linecap="round" fill="none">
+    <line x1="315" y1="310" x2="720" y2="330" />
+    <line x1="315" y1="310" x2="500" y2="730" />
+    <line x1="720" y1="330" x2="500" y2="730" />
+  </g>
+
+  <!-- 付箋 -->
+  <rect x="200" y="195" width="230" height="230" rx="26" fill="#FFE3A3"
+        transform="rotate(-7 315 310)" />
+  <rect x="610" y="220" width="220" height="220" rx="26" fill="#A8E6E2"
+        transform="rotate(6 720 330)" />
+  <rect x="380" y="610" width="240" height="240" rx="26" fill="#F9B8CE"
+        transform="rotate(3 500 730)" />
+</svg>
