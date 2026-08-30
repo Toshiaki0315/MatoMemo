@@ -83,5 +83,31 @@ export function createTauriBoardFileStore(): BoardFileStore {
       await save(path, board);
       return path;
     },
+
+    async exportText(text, suggestedName, filter) {
+      let path: string | null;
+      try {
+        path = await saveDialog({
+          defaultPath: suggestedName,
+          filters: [
+            { name: filter.name, extensions: [...filter.extensions] },
+          ],
+        });
+      } catch (cause) {
+        throw new StorageError(
+          "書き出し先ダイアログを表示できませんでした。",
+          cause,
+        );
+      }
+      if (path === null) {
+        return null;
+      }
+      try {
+        await writeTextFile(path, text);
+      } catch (cause) {
+        throw new StorageError(`ファイルを書き出せませんでした: ${path}`, cause);
+      }
+      return path;
+    },
   };
 }

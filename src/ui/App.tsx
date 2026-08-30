@@ -18,7 +18,12 @@ import {
   zoomAt,
   createViewport,
 } from "../domain/viewport";
-import type { BoardFileStore } from "../platform/boardFileStore";
+import {
+  MARKDOWN_FILE_FILTER,
+  suggestFileName,
+  type BoardFileStore,
+} from "../platform/boardFileStore";
+import { boardToMarkdown } from "../domain/markdown";
 import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import {
@@ -277,6 +282,25 @@ export function App({
     void saveTo(null);
   }, [saveTo]);
 
+  /** 線のつながりを箇条書きにして Markdown ファイルに書き出す。 */
+  const handleExportMarkdown = useCallback(() => {
+    setError(null);
+    setBusy(true);
+    void (async () => {
+      try {
+        await fileStore.exportText(
+          boardToMarkdown(board),
+          suggestFileName(board.name, "md"),
+          MARKDOWN_FILE_FILTER,
+        );
+      } catch (cause) {
+        reportFailure(cause);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [board, fileStore, reportFailure]);
+
   /** 確認を経たうえで実際に行う破壊的な操作。 */
   const runPending = useCallback(
     async (action: PendingAction) => {
@@ -493,6 +517,7 @@ export function App({
         onOpen={() => requestAction("open")}
         onSave={handleSave}
         onSaveAs={handleSaveAs}
+        onExportMarkdown={handleExportMarkdown}
         busy={busy}
         canUndo={canUndo}
         canRedo={canRedo}

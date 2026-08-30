@@ -553,3 +553,99 @@ describe("Tauri の外で動かした場合", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("Markdown 出力", () => {
+  /** 3 枚の付箋を A → B → C とつないだボードを作る。 */
+  function buildChain() {
+    for (const text of ["課題", "原因", "対策"]) {
+      click("黄色の付箋を追加");
+      act(() => {
+        const items = store.getState().board.items;
+        const added = items.at(-1);
+        const first = items[0];
+        if (added !== undefined && added.type === "sticky") {
+          store.getState().replaceItem({
+            ...added,
+            text,
+            x: (first?.x ?? 0) + 400 * (items.length - 1),
+            y: first?.y ?? 0,
+          });
+        }
+        store.getState().clearSelection();
+      });
+    }
+
+    const items = store.getState().board.items;
+    click("接続");
+    for (const [from, to] of [
+      [0, 1],
+      [1, 2],
+    ] as const) {
+      for (const index of [from, to]) {
+        const item = items[index];
+        fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+          button: 0,
+          clientX: (item?.x ?? 0) + 10,
+          clientY: (item?.y ?? 0) + 10,
+        });
+      }
+    }
+    click("接続");
+  }
+
+  it("線のつながりを入れ子の箇条書きにする", async () => {
+    fileStore.exportPath = "/tmp/board.md";
+    renderApp();
+    fireEvent.change(screen.getByLabelText("ボード名"), {
+      target: { value: "検討メモ" },
+    });
+    buildChain();
+
+    click("Markdown 出力");
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/board.md")).toBe(true);
+    });
+    expect(fileStore.files.get("/tmp/board.md")).toBe(
+      "# 検討メモ\n\n- 課題\n  - 原因\n    - 対策\n",
+    );
+  });
+
+  it("キャンセルすると何も書き出さない", async () => {
+    fileStore.exportPath = null;
+    renderApp();
+    buildChain();
+
+    click("Markdown 出力");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Markdown 出力" }),
+      ).toBeEnabled();
+    });
+    expect(fileStore.files.size).toBe(0);
+  });
+
+  it("書き出しに失敗するとメッセージを出す", async () => {
+    fileStore.exportText = async () => {
+      throw new StorageError("書き出せませんでした。");
+    };
+    renderApp();
+    buildChain();
+
+    click("Markdown 出力");
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "書き出せませんでした。",
+      );
+    });
+  });
+
+  it("Markdown を書き出してもボードは未保存のままにする", async () => {
+    fileStore.exportPath = "/tmp/board.md";
+    renderApp();
+    buildChain();
+
+    click("Markdown 出力");
+    await waitFor(() => expect(fileStore.files.size).toBe(1));
+    expect(store.getState().isDirty()).toBe(true);
+  });
+});

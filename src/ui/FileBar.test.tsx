@@ -9,6 +9,7 @@ function renderBar(overrides: Partial<Parameters<typeof FileBar>[0]> = {}) {
     onOpen: vi.fn(),
     onSave: vi.fn(),
     onSaveAs: vi.fn(),
+    onExportMarkdown: vi.fn(),
     onUndo: vi.fn(),
     onRedo: vi.fn(),
   };
@@ -58,6 +59,7 @@ describe("FileBar", () => {
       ["開く", handlers.onOpen],
       ["保存", handlers.onSave],
       ["別名で保存", handlers.onSaveAs],
+      ["Markdown 出力", handlers.onExportMarkdown],
     ] as const) {
       fireEvent.click(screen.getByRole("button", { name: label }));
       expect(handler).toHaveBeenCalled();

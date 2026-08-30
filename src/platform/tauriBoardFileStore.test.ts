@@ -146,3 +146,51 @@ describe("createTauriBoardFileStore: saveAs", () => {
     ).rejects.toThrow(StorageError);
   });
 });
+
+describe("createTauriBoardFileStore: exportText", () => {
+  const filter = { name: "Markdown", extensions: ["md"] } as const;
+
+  it("選ばれたパスにテキストを書き出す", async () => {
+    saveDialogMock.mockResolvedValue("/tmp/board.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    const path = await createTauriBoardFileStore().exportText(
+      "# 見出し\n",
+      "board.md",
+      filter,
+    );
+    expect(path).toBe("/tmp/board.md");
+    expect(writeTextFileMock).toHaveBeenCalledWith("/tmp/board.md", "# 見出し\n");
+  });
+
+  it("既定のファイル名と拡張子のフィルタを渡す", async () => {
+    saveDialogMock.mockResolvedValue(null);
+    await createTauriBoardFileStore().exportText("x", "設計メモ.md", filter);
+    expect(saveDialogMock).toHaveBeenCalledWith({
+      defaultPath: "設計メモ.md",
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+  });
+
+  it("キャンセルされたら書き出さず null を返す", async () => {
+    saveDialogMock.mockResolvedValue(null);
+    expect(
+      await createTauriBoardFileStore().exportText("x", "a.md", filter),
+    ).toBeNull();
+    expect(writeTextFileMock).not.toHaveBeenCalled();
+  });
+
+  it("ダイアログが失敗したら StorageError にする", async () => {
+    saveDialogMock.mockRejectedValue(new Error("failed"));
+    await expect(
+      createTauriBoardFileStore().exportText("x", "a.md", filter),
+    ).rejects.toThrow(StorageError);
+  });
+
+  it("書き込みが失敗したら StorageError にする", async () => {
+    saveDialogMock.mockResolvedValue("/tmp/board.md");
+    writeTextFileMock.mockRejectedValue(new Error("ENOSPC"));
+    await expect(
+      createTauriBoardFileStore().exportText("x", "a.md", filter),
+    ).rejects.toThrow(StorageError);
+  });
+});

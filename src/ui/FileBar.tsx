@@ -11,6 +11,7 @@ export interface FileBarProps {
   readonly onOpen: () => void;
   readonly onSave: () => void;
   readonly onSaveAs: () => void;
+  readonly onExportMarkdown: () => void;
   /** 保存処理の実行中か。 */
   readonly busy?: boolean;
   readonly canUndo: boolean;
@@ -27,6 +28,7 @@ export function FileBar({
   onOpen,
   onSave,
   onSaveAs,
+  onExportMarkdown,
   busy = false,
   canUndo,
   canRedo,
@@ -64,6 +66,9 @@ export function FileBar({
       </button>
       <button type="button" onClick={onSaveAs} disabled={busy}>
         別名で保存
+      </button>
+      <button type="button" onClick={onExportMarkdown} disabled={busy}>
+        Markdown 出力
       </button>
 
       <div className="toolbar-separator" />

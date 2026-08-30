@@ -20,6 +20,8 @@ export interface MemoryBoardFileStore extends BoardFileStore {
   openPath: string | null;
   /** `saveAs()` が返すパス。null ならキャンセル扱い。 */
   savePath: string | null;
+  /** `exportText()` が返すパス。null ならキャンセル扱い。 */
+  exportPath: string | null;
 }
 
 export interface MemoryBoardFileStoreOptions {
@@ -27,6 +29,7 @@ export interface MemoryBoardFileStoreOptions {
   readonly files?: Readonly<Record<string, string>>;
   readonly openPath?: string | null;
   readonly savePath?: string | null;
+  readonly exportPath?: string | null;
 }
 
 export function createMemoryBoardFileStore(
@@ -36,6 +39,7 @@ export function createMemoryBoardFileStore(
     files: new Map(Object.entries(options.files ?? {})),
     openPath: options.openPath ?? null,
     savePath: options.savePath ?? null,
+    exportPath: options.exportPath ?? null,
 
     async load(path: string): Promise<Board> {
       const text = store.files.get(path);
@@ -64,6 +68,14 @@ export function createMemoryBoardFileStore(
       const path = store.savePath;
       await store.save(path, board);
       return path;
+    },
+
+    async exportText(text: string): Promise<string | null> {
+      if (store.exportPath === null) {
+        return null;
+      }
+      store.files.set(store.exportPath, text);
+      return store.exportPath;
     },
   };
 

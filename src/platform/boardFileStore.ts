@@ -46,6 +46,12 @@ export class StorageError extends Error {
   }
 }
 
+/** Markdown 書き出し用のフィルタ。 */
+export const MARKDOWN_FILE_FILTER = {
+  name: "Markdown",
+  extensions: ["md"],
+} as const;
+
 /** ボードの読み書きを行う。 */
 export interface BoardFileStore {
   /** 開くダイアログを表示して読み込む。キャンセルされた場合は null。 */
@@ -56,14 +62,26 @@ export interface BoardFileStore {
   save(path: string, board: Board): Promise<void>;
   /** 保存先ダイアログを表示して保存する。キャンセルされた場合は null。 */
   saveAs(board: Board): Promise<string | null>;
+  /**
+   * 書き出し先を尋ねてテキストを保存する。キャンセルされた場合は null。
+   * Markdown の書き出しに使う。
+   */
+  exportText(
+    text: string,
+    suggestedName: string,
+    filter: { readonly name: string; readonly extensions: readonly string[] },
+  ): Promise<string | null>;
 }
 
 /** ボード名から保存ダイアログの既定ファイル名を作る。 */
-export function suggestFileName(boardName: string): string {
+export function suggestFileName(
+  boardName: string,
+  extension: string = BOARD_FILE_EXTENSION,
+): string {
   const sanitized = boardName
     .replace(UNSAFE_FILENAME_CHARS, "-")
     .trim()
     .slice(0, MAX_FILE_NAME_LENGTH);
   const base = sanitized.length > 0 ? sanitized : FALLBACK_FILE_NAME;
-  return `${base}.${BOARD_FILE_EXTENSION}`;
+  return `${base}.${extension}`;
 }
