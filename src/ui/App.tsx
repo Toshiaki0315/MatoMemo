@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createImage,
   createShape,
@@ -21,6 +21,11 @@ import {
 import type { BoardFileStore } from "../platform/boardFileStore";
 import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
+import {
+  closeWindow as closeWindowDefault,
+  guardWindowClose,
+  type CloseRequestGuard,
+} from "../platform/windowCloseGuard";
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -48,10 +53,14 @@ export interface AppProps {
   readonly imagePicker?: ImagePicker;
   /** ボードの読み書きの手段。テストではインメモリ実装に差し替える。 */
   readonly fileStore?: BoardFileStore;
+  /** ウィンドウを閉じる要求の購読。テストでは差し替える。 */
+  readonly closeGuard?: CloseRequestGuard;
+  /** ウィンドウを実際に閉じる手段。テストでは差し替える。 */
+  readonly closeWindow?: () => void | Promise<void>;
 }
 
 /** 未保存の変更を捨てる確認が要る操作。 */
-type PendingAction = "new" | "open";
+type PendingAction = "new" | "open" | "close";
 
 /** テキストを内包できるアイテムか。 */
 function isTextEditable(item: Item | undefined): item is TextEditableItem {
@@ -72,6 +81,8 @@ export function App({
   store = useBoardStore,
   imagePicker = pickImage,
   fileStore = getDefaultFileStore(),
+  closeGuard = guardWindowClose,
+  closeWindow = closeWindowDefault,
 }: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
@@ -129,6 +140,9 @@ export function App({
   const [pending, setPending] = useState<PendingAction | null>(null);
 
   const dirty = board !== savedBoard;
+  // 閉じる要求のハンドラは一度しか登録しないので、最新の値は ref から読む
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
   const images = useImageCache(board.items);
@@ -252,6 +266,10 @@ export function App({
         newBoard();
         return;
       }
+      if (action === "close") {
+        await closeWindow();
+        return;
+      }
       setError(null);
       setBusy(true);
       try {
@@ -265,7 +283,7 @@ export function App({
         setBusy(false);
       }
     },
-    [fileStore, newBoard, openBoard, reportFailure],
+    [closeWindow, fileStore, newBoard, openBoard, reportFailure],
   );
 
   /** 未保存なら確認してから、そうでなければそのまま実行する。 */
@@ -351,6 +369,32 @@ export function App({
     },
     [setViewport, viewport],
   );
+
+  // ウィンドウを閉じる要求を横取りし、未保存なら確認してから閉じる。
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let disposed = false;
+
+    void closeGuard(() => {
+      // 未保存でなければそのまま閉じてよい
+      if (!dirtyRef.current) {
+        return true;
+      }
+      setPending("close");
+      return false;
+    }).then((unlisten) => {
+      if (disposed) {
+        unlisten();
+        return;
+      }
+      stop = unlisten;
+    });
+
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, [closeGuard]);
 
   // Command + S / O / N のキーボード操作。
   useEffect(() => {
@@ -496,8 +540,12 @@ export function App({
 
       {pending === null ? null : (
         <ConfirmDialog
-          message="保存していない変更があります。破棄して続けますか？"
-          confirmLabel="破棄して続行"
+          message={
+            pending === "close"
+              ? "保存していない変更があります。保存せずに終了しますか？"
+              : "保存していない変更があります。破棄して続けますか？"
+          }
+          confirmLabel={pending === "close" ? "保存せずに終了" : "破棄して続行"}
           onConfirm={() => {
             const action = pending;
             setPending(null);

@@ -6,7 +6,7 @@
  */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageError } from "../platform/boardFileStore";
 import {
   createMemoryBoardFileStore,
@@ -21,6 +21,9 @@ let layout: LayoutStub;
 let canvasStub: ReturnType<typeof stubCanvasContext>;
 let store: BoardStore;
 let fileStore: MemoryBoardFileStore;
+/** 閉じる要求を発火させる関数。null なら購読されていない。 */
+let requestClose: (() => Promise<boolean>) | null;
+let closeWindow: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   layout = stubLayout({ width: 800, height: 600 });
@@ -28,6 +31,8 @@ beforeEach(() => {
   let counter = 0;
   store = createBoardStore({ createId: () => `id-${(counter += 1)}` });
   fileStore = createMemoryBoardFileStore();
+  requestClose = null;
+  closeWindow = vi.fn();
 });
 
 afterEach(() => {
@@ -36,7 +41,19 @@ afterEach(() => {
 });
 
 function renderApp() {
-  return render(<App store={store} fileStore={fileStore} />);
+  return render(
+    <App
+      store={store}
+      fileStore={fileStore}
+      closeGuard={async (onRequest) => {
+        requestClose = async () => onRequest();
+        return () => {
+          requestClose = null;
+        };
+      }}
+      closeWindow={closeWindow}
+    />,
+  );
 }
 
 function click(name: string) {
@@ -418,5 +435,96 @@ describe("キーボード操作", () => {
     click("黄色の付箋を追加");
     fireEvent.keyDown(window, { key: "p", metaKey: true });
     expect(store.getState().board.items).toHaveLength(1);
+  });
+});
+
+describe("ウィンドウを閉じるときの確認", () => {
+  /** 閉じる要求が購読されるのを待つ。 */
+  async function waitForGuard() {
+    await waitFor(() => expect(requestClose).not.toBeNull());
+  }
+
+  it("未保存でなければそのまま閉じる", async () => {
+    renderApp();
+    await waitForGuard();
+    await expect(requestClose?.()).resolves.toBe(true);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("未保存なら閉じるのを止めて確認する", async () => {
+    renderApp();
+    await waitForGuard();
+    click("黄色の付箋を追加");
+
+    await expect(requestClose?.()).resolves.toBe(false);
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("終了");
+  });
+
+  it("確認して終了を選ぶとウィンドウを閉じる", async () => {
+    renderApp();
+    await waitForGuard();
+    click("黄色の付箋を追加");
+    await requestClose?.();
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument(),
+    );
+
+    click("保存せずに終了");
+    await waitFor(() => expect(closeWindow).toHaveBeenCalled());
+  });
+
+  it("キャンセルすると閉じない", async () => {
+    renderApp();
+    await waitForGuard();
+    click("黄色の付箋を追加");
+    await requestClose?.();
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument(),
+    );
+
+    click("キャンセル");
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("保存してからならそのまま閉じられる", async () => {
+    fileStore.savePath = "/tmp/board.matomemo";
+    renderApp();
+    await waitForGuard();
+    click("黄色の付箋を追加");
+    click("保存");
+    await waitFor(() => expect(fileStore.files.size).toBe(1));
+
+    await expect(requestClose?.()).resolves.toBe(true);
+  });
+
+  it("アンマウントすると購読を解除する", async () => {
+    const view = renderApp();
+    await waitForGuard();
+    view.unmount();
+    expect(requestClose).toBeNull();
+  });
+
+  it("購読の完了前にアンマウントされても解除する", async () => {
+    let resolveGuard: ((unlisten: () => void) => void) | undefined;
+    const unlisten = vi.fn();
+    const view = render(
+      <App
+        store={store}
+        fileStore={fileStore}
+        closeGuard={() =>
+          new Promise((resolve) => {
+            resolveGuard = resolve;
+          })
+        }
+        closeWindow={closeWindow}
+      />,
+    );
+    view.unmount();
+    resolveGuard?.(unlisten);
+    await waitFor(() => expect(unlisten).toHaveBeenCalled());
   });
 });
