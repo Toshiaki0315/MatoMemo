@@ -796,6 +796,105 @@ describe("App: 整列", () => {
     ).not.toBeInTheDocument();
   });
 
+  /**
+   * 付箋 3 枚を指定した矩形に置き、すべて選んで右クリックする。
+   * 整列の種類を取り違えていれば落ちるよう、位置と大きさを明示する。
+   */
+  function arrangeThreeAndOpenMenu(
+    rects: readonly { x: number; y: number }[],
+    size = { width: 100, height: 50 },
+  ) {
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    act(() => {
+      const items = store.getState().board.items;
+      items.forEach((item, index) => {
+        const rect = rects[index];
+        store.getState().replaceItem({
+          ...item,
+          x: rect?.x ?? 0,
+          y: rect?.y ?? 0,
+          width: size.width,
+          height: size.height,
+        });
+      });
+      store.getState().selectMany(items.map((item) => item.id));
+    });
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: 5,
+      clientY: 5,
+    });
+  }
+
+  /** 横に並べた 3 枚。右端は 300+100=400。 */
+  const SPREAD_X = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 300, y: 0 },
+  ] as const;
+
+  /** 縦に並べた 3 枚。下端は 200+50=250。 */
+  const SPREAD_Y = [
+    { x: 0, y: 0 },
+    { x: 0, y: 50 },
+    { x: 0, y: 200 },
+  ] as const;
+
+  it("右揃えで右端がそろう", () => {
+    renderApp();
+    arrangeThreeAndOpenMenu(SPREAD_X);
+    fireEvent.click(screen.getByRole("menuitem", { name: "右揃え" }));
+    // 右端 400 に幅 100 を合わせるので x はすべて 300
+    expect(store.getState().board.items.map((item) => item.x)).toEqual([
+      300, 300, 300,
+    ]);
+  });
+
+  it("左右中央揃えで横の中心がそろう", () => {
+    renderApp();
+    arrangeThreeAndOpenMenu(SPREAD_X);
+    fireEvent.click(screen.getByRole("menuitem", { name: "左右中央揃え" }));
+    // 中心 (0+400)/2=200 に幅 100 の中心を合わせる
+    expect(store.getState().board.items.map((item) => item.x)).toEqual([
+      150, 150, 150,
+    ]);
+  });
+
+  it("下揃えで下端がそろう", () => {
+    renderApp();
+    arrangeThreeAndOpenMenu(SPREAD_Y);
+    fireEvent.click(screen.getByRole("menuitem", { name: "下揃え" }));
+    // 下端 250 に高さ 50 を合わせるので y はすべて 200
+    expect(store.getState().board.items.map((item) => item.y)).toEqual([
+      200, 200, 200,
+    ]);
+  });
+
+  it("上下中央揃えで縦の中心がそろう", () => {
+    renderApp();
+    arrangeThreeAndOpenMenu(SPREAD_Y);
+    fireEvent.click(screen.getByRole("menuitem", { name: "上下中央揃え" }));
+    // 中心 (0+250)/2=125 に高さ 50 の中心を合わせる
+    expect(store.getState().board.items.map((item) => item.y)).toEqual([
+      100, 100, 100,
+    ]);
+  });
+
+  it("縦に等間隔で最も狭いすき間にそろう", () => {
+    renderApp();
+    // すき間は 50 と 200。狭いほうの 50 にそろえる
+    arrangeThreeAndOpenMenu([
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+      { x: 0, y: 350 },
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "縦に等間隔" }));
+    expect(store.getState().board.items.map((item) => item.y)).toEqual([
+      0, 100, 200,
+    ]);
+  });
+
   it("横に等間隔で最も狭いすき間にそろう", () => {
     renderApp();
     for (let i = 0; i < 3; i += 1) {
