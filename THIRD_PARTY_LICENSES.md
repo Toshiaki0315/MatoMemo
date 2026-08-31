@@ -15,7 +15,7 @@ MatoMemo 自体のライセンスは [MIT License](./LICENSE) です。
 
 ## 概要
 
-合計 249 パッケージ（Rust 240 / npm 9）。
+合計 255 パッケージ（Rust 246 / npm 9）。
 
 | ライセンス | 件数 |
 | --- | --- |
@@ -23,8 +23,8 @@ MatoMemo 自体のライセンスは [MIT License](./LICENSE) です。
 | MIT | 43 |
 | Apache-2.0 OR MIT | 27 |
 | Unicode-3.0 | 18 |
+| Zlib OR Apache-2.0 OR MIT | 14 |
 | MIT/Apache-2.0 | 13 |
-| Zlib OR Apache-2.0 OR MIT | 8 |
 | MPL-2.0 | 5 |
 | Unlicense OR MIT | 5 |
 | BSD-3-Clause | 2 |
@@ -62,7 +62,7 @@ MatoMemo はこれらのパッケージを一切改変していません。
 | option-ext | 0.2.0 | MPL-2.0 |
 | selectors | 0.36.1 | MPL-2.0 |
 
-## Rust クレート (240)
+## Rust クレート (246)
 
 `src-tauri` のバイナリにリンクされるクレートです。
 `cargo metadata --filter-platform aarch64-apple-darwin` の解決グラフを
@@ -189,12 +189,18 @@ normal 依存のみ辿って抽出しています。
 | [num-traits](https://github.com/rust-num/num-traits) | 0.2.19 | MIT OR Apache-2.0 | Copyright (c) 2014 The Rust Project Developers |
 | [objc2](https://github.com/madsmtm/objc2) | 0.6.4 | MIT | — |
 | [objc2-app-kit](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-cloud-kit](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-core-data](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
 | [objc2-core-foundation](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
 | [objc2-core-graphics](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-core-image](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-core-text](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-core-video](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
 | [objc2-encode](https://github.com/madsmtm/objc2) | 4.1.0 | MIT | — |
 | [objc2-exception-helper](https://github.com/madsmtm/objc2) | 0.1.1 | Zlib OR Apache-2.0 OR MIT | — |
 | [objc2-foundation](https://github.com/madsmtm/objc2) | 0.3.2 | MIT | — |
 | [objc2-io-surface](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
+| [objc2-quartz-core](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
 | [objc2-web-kit](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | — |
 | [once_cell](https://github.com/matklad/once_cell) | 1.21.4 | MIT OR Apache-2.0 | copyright notice that is included in or attached to the work |
 | [option-ext](https://github.com/soc/option-ext.git) | 0.2.0 | MPL-2.0 | — |
