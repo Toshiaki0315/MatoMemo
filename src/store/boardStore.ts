@@ -11,6 +11,12 @@
 
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import {
+  alignItems,
+  distributeItems,
+  type Alignment,
+  type DistributeAxis,
+} from "../domain/align";
+import {
   clampBend,
   createBoard,
   createConnector,
@@ -139,6 +145,11 @@ export interface BoardState {
   selectConnector(id: ConnectorId | null): void;
   /** 選択中のコネクタを削除する。 */
   removeSelectedConnector(): void;
+
+  /** 選択中のアイテムを整列する。基準は選択全体の外接矩形。 */
+  alignSelected(alignment: Alignment): void;
+  /** 選択中のアイテムを等間隔に並べる。間隔は最も狭いすき間に合わせる。 */
+  distributeSelected(axis: DistributeAxis): void;
 
   /** 選択中のアイテムの重なり順を変える。 */
   bringSelectedToFront(): void;
@@ -564,6 +575,24 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
 
       removeConnector(id) {
         set((state) => withBoard(state, removeConnectors(state.board, [id])));
+      },
+
+      alignSelected(alignment) {
+        set((state) =>
+          withBoard(
+            state,
+            alignItems(state.board, [...state.selectedIds], alignment),
+          ),
+        );
+      },
+
+      distributeSelected(axis) {
+        set((state) =>
+          withBoard(
+            state,
+            distributeItems(state.board, [...state.selectedIds], axis),
+          ),
+        );
       },
 
       bringSelectedToFront() {

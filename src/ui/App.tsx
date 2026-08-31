@@ -130,6 +130,8 @@ export function App({
   const redo = store((state) => state.redo);
   const beginHistoryGroup = store((state) => state.beginHistoryGroup);
   const endHistoryGroup = store((state) => state.endHistoryGroup);
+  const alignSelected = store((state) => state.alignSelected);
+  const distributeSelected = store((state) => state.distributeSelected);
   const bringSelectedToFront = store((state) => state.bringSelectedToFront);
   const sendSelectedToBack = store((state) => state.sendSelectedToBack);
   const bringSelectedForward = store((state) => state.bringSelectedForward);
@@ -683,6 +685,48 @@ export function App({
                   { label: "一つ手前へ", onSelect: bringSelectedForward },
                   { label: "一つ奥へ", onSelect: sendSelectedBackward },
                   { label: "最背面へ移動", onSelect: sendSelectedToBack },
+                  // 整列は 2 つ以上を選んでいるときだけ意味がある
+                  ...(selectedIds.size >= 2
+                    ? [
+                        {
+                          label: "左揃え",
+                          onSelect: () => alignSelected("left"),
+                        },
+                        {
+                          label: "左右中央揃え",
+                          onSelect: () => alignSelected("centerX"),
+                        },
+                        {
+                          label: "右揃え",
+                          onSelect: () => alignSelected("right"),
+                        },
+                        {
+                          label: "上揃え",
+                          onSelect: () => alignSelected("top"),
+                        },
+                        {
+                          label: "上下中央揃え",
+                          onSelect: () => alignSelected("middle"),
+                        },
+                        {
+                          label: "下揃え",
+                          onSelect: () => alignSelected("bottom"),
+                        },
+                      ]
+                    : []),
+                  // 等間隔は 3 つ以上ないとすき間をそろえられない
+                  ...(selectedIds.size >= 3
+                    ? [
+                        {
+                          label: "横に等間隔",
+                          onSelect: () => distributeSelected("horizontal"),
+                        },
+                        {
+                          label: "縦に等間隔",
+                          onSelect: () => distributeSelected("vertical"),
+                        },
+                      ]
+                    : []),
                   { label: "削除", onSelect: removeSelected },
                 ]
           }

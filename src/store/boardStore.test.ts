@@ -971,6 +971,88 @@ describe("コネクタの矢印", () => {
   });
 });
 
+describe("整列", () => {
+  /** 縦横にずれた付箋 2 枚を追加して両方選択する。 */
+  function setupTwoSelected() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 200, 50);
+    store.getState().selectMany([a, b]);
+    return { store, a, b };
+  }
+
+  it("選択中のアイテムを整列する", () => {
+    const { store } = setupTwoSelected();
+    store.getState().alignSelected("top");
+    expect(store.getState().board.items.map((item) => item.y)).toEqual([0, 0]);
+  });
+
+  it("整列は 1 回の取り消しで戻る", () => {
+    const { store } = setupTwoSelected();
+    store.getState().alignSelected("left");
+    store.getState().undo();
+    expect(store.getState().board.items.map((item) => item.x)).toEqual([
+      0, 200,
+    ]);
+  });
+
+  it("1 つだけの選択では何も変わらない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    const before = store.getState().board;
+    store.getState().alignSelected("left");
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("既にそろっていれば未保存にならない", () => {
+    const { store } = setupTwoSelected();
+    store.getState().alignSelected("top");
+    const before = store.getState().board;
+    store.getState().alignSelected("top");
+    expect(store.getState().board).toBe(before);
+  });
+});
+
+describe("等間隔", () => {
+  /** すき間が 100 と 300 で不ぞろいな付箋 3 枚を追加して選択する。 */
+  function setupThreeSelected() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 200, 0);
+    const c = addSticky(store, 600, 0);
+    store.getState().selectMany([a, b, c]);
+    return { store };
+  }
+
+  it("最も狭いすき間で等間隔に並べる", () => {
+    const { store } = setupThreeSelected();
+    store.getState().distributeSelected("horizontal");
+    // 付箋は 100x100。すき間 100 にそろい、x は 0, 200, 400 になる
+    expect(store.getState().board.items.map((item) => item.x)).toEqual([
+      0, 200, 400,
+    ]);
+  });
+
+  it("等間隔は 1 回の取り消しで戻る", () => {
+    const { store } = setupThreeSelected();
+    store.getState().distributeSelected("horizontal");
+    store.getState().undo();
+    expect(store.getState().board.items.map((item) => item.x)).toEqual([
+      0, 200, 600,
+    ]);
+  });
+
+  it("2 つ以下の選択では何も変わらない", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 500, 0);
+    store.getState().selectMany([a, b]);
+    const before = store.getState().board;
+    store.getState().distributeSelected("horizontal");
+    expect(store.getState().board).toBe(before);
+  });
+});
+
 describe("コネクタの折れ位置", () => {
   function setupPolyline() {
     const store = setup();

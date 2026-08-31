@@ -642,6 +642,136 @@ describe("App: 重なり順の変更", () => {
   });
 });
 
+describe("App: 整列", () => {
+  /** 付箋 3 枚を追加してすべて選択し、右クリックでメニューを出す。 */
+  function addThreeAndOpenMenu() {
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    const ids = store.getState().board.items.map((item) => item.id);
+    act(() => store.getState().selectMany(ids));
+    const item = store.getState().board.items[0];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    return ids;
+  }
+
+  it("複数選択の右クリックで整列メニューが出る", () => {
+    renderApp();
+    addThreeAndOpenMenu();
+    for (const label of [
+      "左揃え",
+      "左右中央揃え",
+      "右揃え",
+      "上揃え",
+      "上下中央揃え",
+      "下揃え",
+    ]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("1 つだけの選択では整列メニューを出さない", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const item = store.getState().board.items[0];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "左揃え" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("上揃えで y がそろう", () => {
+    renderApp();
+    addThreeAndOpenMenu();
+    // 付箋はカスケードで少しずつずれて置かれている
+    fireEvent.click(screen.getByRole("menuitem", { name: "上揃え" }));
+    const ys = store.getState().board.items.map((item) => item.y);
+    expect(new Set(ys).size).toBe(1);
+  });
+
+  it("左揃えで x がそろう", () => {
+    renderApp();
+    addThreeAndOpenMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "左揃え" }));
+    const xs = store.getState().board.items.map((item) => item.x);
+    expect(new Set(xs).size).toBe(1);
+  });
+
+  it("整列は取り消せる", () => {
+    renderApp();
+    addThreeAndOpenMenu();
+    const before = store.getState().board.items.map((item) => item.y);
+    fireEvent.click(screen.getByRole("menuitem", { name: "上揃え" }));
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items.map((item) => item.y)).toEqual(before);
+  });
+
+  it("3 つ以上選ぶと等間隔メニューが出る", () => {
+    renderApp();
+    addThreeAndOpenMenu();
+    expect(
+      screen.getByRole("menuitem", { name: "横に等間隔" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "縦に等間隔" }),
+    ).toBeInTheDocument();
+  });
+
+  it("2 つの選択では等間隔メニューを出さない", () => {
+    renderApp();
+    for (let i = 0; i < 2; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    const ids = store.getState().board.items.map((item) => item.id);
+    act(() => store.getState().selectMany(ids));
+    const item = store.getState().board.items[0];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    // 整列は出るが、等間隔は出ない
+    expect(screen.getByRole("menuitem", { name: "左揃え" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "横に等間隔" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("横に等間隔で最も狭いすき間にそろう", () => {
+    renderApp();
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    }
+    // すき間が 100 と 300 になるよう並べ直す（付箋は 160 幅）
+    act(() => {
+      const items = store.getState().board.items;
+      items.forEach((item, index) => {
+        store.getState().replaceItem({
+          ...item,
+          x: [0, 260, 720][index] ?? 0,
+          y: 0,
+        });
+      });
+      store.getState().selectMany(items.map((item) => item.id));
+    });
+    const item = store.getState().board.items[0];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "横に等間隔" }));
+    expect(store.getState().board.items.map((current) => current.x)).toEqual([
+      0, 260, 520,
+    ]);
+  });
+});
+
 describe("App: リサイズ", () => {
   it("ハンドルをドラッグするとサイズが変わる", () => {
     renderApp();
