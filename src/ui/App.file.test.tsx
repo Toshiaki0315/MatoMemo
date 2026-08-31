@@ -15,7 +15,7 @@ import {
 import { createBoardStore, type BoardStore } from "../store/boardStore";
 import { stubCanvasContext } from "../test/mockCanvas";
 import { stubLayout, type LayoutStub } from "../test/mockLayout";
-import { App } from "./App";
+import { App, AUTOSAVE_INTERVAL_MS } from "./App";
 
 let layout: LayoutStub;
 let canvasStub: ReturnType<typeof stubCanvasContext>;
@@ -722,6 +722,81 @@ describe("Markdown 出力", () => {
 
     click("Markdown 出力");
     await waitFor(() => expect(fileStore.files.size).toBe(1));
+    expect(store.getState().isDirty()).toBe(true);
+  });
+});
+
+describe("自動保存", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 自動保存のタイマーを 1 回分進め、保存の完了まで待つ。 */
+  async function advanceAutosave() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_INTERVAL_MS);
+    });
+  }
+
+  /** 付箋を置いて保存済みにし、保存先を持ったボードを作る。 */
+  function setupSavedBoard() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    act(() =>
+      store
+        .getState()
+        .markSaved("/tmp/auto.matomemo", store.getState().board),
+    );
+  }
+
+  it("保存先が決まっていれば一定時間ごとに自動保存する", async () => {
+    vi.useFakeTimers();
+    renderApp();
+    setupSavedBoard();
+    // 保存後にさらに編集して未保存の変更を作る
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    expect(store.getState().isDirty()).toBe(true);
+
+    await advanceAutosave();
+
+    expect(fileStore.files.has("/tmp/auto.matomemo")).toBe(true);
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
+  it("保存先が決まっていなければ自動保存しない（ダイアログも出さない）", async () => {
+    vi.useFakeTimers();
+    fileStore.savePath = "/tmp/never.matomemo";
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+
+    await advanceAutosave();
+
+    expect(fileStore.files.size).toBe(0);
+    expect(store.getState().isDirty()).toBe(true);
+  });
+
+  it("変更が無ければ書き込まない", async () => {
+    vi.useFakeTimers();
+    renderApp();
+    setupSavedBoard();
+    const saveSpy = vi.spyOn(fileStore, "save");
+
+    await advanceAutosave();
+
+    expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it("自動保存の失敗はメッセージで知らせる", async () => {
+    vi.useFakeTimers();
+    fileStore.save = async () => {
+      throw new StorageError("保存できませんでした。");
+    };
+    renderApp();
+    setupSavedBoard();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+
+    await advanceAutosave();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("保存できませんでした。");
     expect(store.getState().isDirty()).toBe(true);
   });
 });

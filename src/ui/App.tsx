@@ -47,6 +47,9 @@ import { useImageCache } from "./useImageCache";
 /** ズームボタン 1 回あたりの倍率。 */
 const ZOOM_STEP = 1.25;
 
+/** 自動保存の間隔 (ms)。 */
+export const AUTOSAVE_INTERVAL_MS = 30_000;
+
 /** 同じ場所に重ねて追加しないための階段状のずらし幅。 */
 const CASCADE_OFFSET = 24;
 const CASCADE_LENGTH = 8;
@@ -116,6 +119,7 @@ export function App({
   const replaceConnector = store((state) => state.replaceConnector);
   const filePath = store((state) => state.filePath);
   const savedBoard = store((state) => state.savedBoard);
+  const grouping = store((state) => state.grouping);
   const renameBoard = store((state) => state.renameBoard);
   const openBoard = store((state) => state.openBoard);
   const markSaved = store((state) => state.markSaved);
@@ -467,6 +471,25 @@ export function App({
     },
     [setViewport, viewport],
   );
+
+  // 定期的な自動保存。
+  // 保存先が決まっているボードだけを対象にする。保存先が無いときに
+  // ダイアログを出すと作業を中断してしまうため、手動の保存に任せる。
+  // タイマーは一度だけ登録し、最新の状態は ref から読む。依存配列に
+  // 入れると変更のたびにタイマーが掛け直され、編集が続く間は保存されない。
+  const autosaveRef = useRef({ dirty, busy, grouping, filePath, saveTo });
+  autosaveRef.current = { dirty, busy, grouping, filePath, saveTo };
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const { dirty, busy, grouping, filePath, saveTo } = autosaveRef.current;
+      // 操作の途中（ドラッグ中）や別のファイル操作の実行中は次の機会に回す
+      if (!dirty || busy || grouping || filePath === null) {
+        return;
+      }
+      void saveTo(filePath);
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // ウィンドウを閉じる要求を横取りし、未保存なら確認してから閉じる。
   useEffect(() => {
