@@ -37,10 +37,48 @@ describe("renderBoard", () => {
 
     const expected = computeGridLines(baseOptions.viewport, 400, 300);
     const moves = mock.callsOf("moveTo");
+    // 実線と、切り替わりに備えて薄く出している線の両方
     expect(moves).toHaveLength(
-      expected.vertical.length + expected.horizontal.length,
+      expected.vertical.length +
+        expected.horizontal.length +
+        expected.minorVertical.length +
+        expected.minorHorizontal.length,
     );
-    expect(mock.callsOf("stroke")).toHaveLength(1);
+    // 濃さが違うので実線と薄い線で 2 回に分けて引く
+    expect(mock.callsOf("stroke")).toHaveLength(2);
+  });
+
+  it("薄い線を計算どおりの濃さで描く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, baseOptions);
+
+    const expected = computeGridLines(baseOptions.viewport, 400, 300);
+    expect(mock.assignmentsTo("globalAlpha")).toContain(expected.minorAlpha);
+  });
+
+  it("薄い線を描いたあとは濃さを戻す", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, baseOptions);
+    // 戻し忘れるとアイテムまで薄くなる
+    expect(mock.assignmentsTo("globalAlpha").at(-1)).toBe(1);
+    expect(mock.ctx.globalAlpha).toBe(1);
+  });
+
+  it("薄い線は実線のあとに引く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, baseOptions);
+
+    const expected = computeGridLines(baseOptions.viewport, 400, 300);
+    const majorCount =
+      expected.vertical.length + expected.horizontal.length;
+    const firstMinorX = expected.minorVertical[0];
+    expect(mock.callsOf("moveTo")[majorCount]?.args).toEqual([firstMinorX, 0]);
+  });
+
+  it("グリッドを非表示にすれば濃さも触らない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, { ...baseOptions, showGrid: false });
+    expect(mock.assignmentsTo("globalAlpha")).toEqual([]);
   });
 
   it("縦線は上端から下端まで引く", () => {

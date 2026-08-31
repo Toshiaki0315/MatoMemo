@@ -80,3 +80,70 @@ describe("computeGridLines", () => {
     );
   });
 });
+
+describe("computeGridLines: 切り替わりのフェード", () => {
+  const VIEW = { width: 400, height: 300 };
+
+  /** その倍率での minor の濃さ。 */
+  function alphaAt(scale: number) {
+    return computeGridLines({ x: 0, y: 0, scale }, VIEW.width, VIEW.height)
+      .minorAlpha;
+  }
+
+  it("濃さは 0 以上 1 未満に収まる", () => {
+    for (let scale = MIN_SCALE; scale <= MAX_SCALE; scale += 0.01) {
+      const alpha = alphaAt(scale);
+      expect(alpha).toBeGreaterThanOrEqual(0);
+      expect(alpha).toBeLessThan(1);
+    }
+  });
+
+  it("間隔が切り替わった直後は見えない濃さから始まる", () => {
+    // 0.48 倍でちょうど画面上 24px になり、間隔が切り替わる
+    expect(alphaAt(0.48)).toBe(0);
+  });
+
+  it("次の切り替わりが近づくほど濃くなる", () => {
+    expect(alphaAt(0.6)).toBeGreaterThan(alphaAt(0.5));
+    expect(alphaAt(0.9)).toBeGreaterThan(alphaAt(0.6));
+  });
+
+  it("切り替わる直前はほぼ濃さ 1 に達している", () => {
+    // 0.96 倍の直前。ここを越えると minor が実線に変わる
+    expect(alphaAt(0.9599)).toBeGreaterThan(0.99);
+  });
+
+  it("切り替わりの前後で濃さが飛ばない", () => {
+    // 直前の minor がほぼ濃さ 1 まで来ており、そのまま実線に変わる。
+    // 直後の minor は 0 から始まるので、見た目の濃さは連続する
+    expect(alphaAt(0.9599)).toBeGreaterThan(0.99);
+    expect(alphaAt(0.9601)).toBeLessThan(0.01);
+  });
+
+  it("薄い線は実線のちょうど中間に並ぶ", () => {
+    const lines = computeGridLines({ x: 0, y: 0, scale: 0.7 }, 400, 300);
+    const [first, second] = lines.vertical;
+    const middle = lines.minorVertical[0];
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(middle).toBeCloseTo(((first ?? 0) + (second ?? 0)) / 2, 10);
+  });
+
+  it("薄い線も画面内に収まる", () => {
+    const lines = computeGridLines({ x: 13, y: -27, scale: 1.7 }, 300, 200);
+    for (const x of lines.minorVertical) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(300);
+    }
+    for (const y of lines.minorHorizontal) {
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("画面サイズが 0 なら薄い線も返さない", () => {
+    const lines = computeGridLines(createViewport(), 0, 0);
+    expect(lines.minorVertical).toEqual([]);
+    expect(lines.minorHorizontal).toEqual([]);
+  });
+});

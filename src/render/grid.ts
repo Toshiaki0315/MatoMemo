@@ -19,8 +19,33 @@ export interface GridLines {
   readonly vertical: readonly number[];
   /** 横線の y 座標。 */
   readonly horizontal: readonly number[];
+  /** ひとつ細かい縦線の x 座標。実線の中間に並ぶ。 */
+  readonly minorVertical: readonly number[];
+  /** ひとつ細かい横線の y 座標。 */
+  readonly minorHorizontal: readonly number[];
+  /**
+   * 細かい線の濃さ (0 以上 1 未満)。
+   * 切り替わった直後は 0 で、次の切り替わりに向けて 1 に近づく。
+   */
+  readonly minorAlpha: number;
   /** 採用したワールド座標での間隔。 */
   readonly spacing: number;
+}
+
+/**
+ * 細かい線の濃さを返す。
+ *
+ * 拡大するにつれて細かい線が濃くなり、濃さが 1 に達するあたりで
+ * 間隔が半分に切り替わって、その線が実線になる。入れ替わった直後の
+ * 細かい線はまた 0 から始まるので、見た目の濃さは途切れない。
+ *
+ * `gridSpacingForScale` が画面上の間隔を
+ * `[MIN_GRID_SCREEN_SPACING, MIN_GRID_SCREEN_SPACING * 2)` に保つため、
+ * 返す値は常に 0 以上 1 未満になる。
+ */
+export function minorGridAlpha(scale: number): number {
+  const screenSpacing = gridSpacingForScale(scale) * scale;
+  return (screenSpacing - MIN_GRID_SCREEN_SPACING) / MIN_GRID_SCREEN_SPACING;
 }
 
 /**
@@ -38,27 +63,45 @@ export function gridSpacingForScale(scale: number): number {
   return BASE_GRID_SPACING * 2 ** steps;
 }
 
-/** 1 方向分の線の位置を求める。 */
+/** 1 方向分の線の位置。実線と、その中間に入る細かい線に分ける。 */
+interface AxisLines {
+  readonly major: number[];
+  readonly minor: number[];
+}
+
+/**
+ * 1 方向分の線の位置を求める。
+ *
+ * 半分の間隔で数え、偶数番目を実線、奇数番目を細かい線とする。
+ * 位置は添字から求め、足し込みによる誤差が溜まらないようにする。
+ */
 function linesAlongAxis(
   worldStart: number,
   screenLength: number,
   spacing: number,
   scale: number,
   translate: number,
-): number[] {
+): AxisLines {
+  const major: number[] = [];
+  const minor: number[] = [];
   if (screenLength <= 0) {
-    return [];
+    return { major, minor };
   }
-  const positions: number[] = [];
-  const firstLine = Math.ceil(worldStart / spacing) * spacing;
+  const step = spacing / 2;
+  const firstIndex = Math.ceil(worldStart / step);
   for (
-    let world = firstLine;
-    world * scale + translate <= screenLength;
-    world += spacing
+    let index = firstIndex;
+    index * step * scale + translate <= screenLength;
+    index += 1
   ) {
-    positions.push(world * scale + translate);
+    const position = index * step * scale + translate;
+    if (index % 2 === 0) {
+      major.push(position);
+    } else {
+      minor.push(position);
+    }
   }
-  return positions;
+  return { major, minor };
 }
 
 /** 指定した画面サイズに描くべきグリッド線を計算する。 */
@@ -69,21 +112,26 @@ export function computeGridLines(
 ): GridLines {
   const spacing = gridSpacingForScale(viewport.scale);
   const topLeft = toWorld(viewport, { x: 0, y: 0 });
+  const x = linesAlongAxis(
+    topLeft.x,
+    screenWidth,
+    spacing,
+    viewport.scale,
+    viewport.x,
+  );
+  const y = linesAlongAxis(
+    topLeft.y,
+    screenHeight,
+    spacing,
+    viewport.scale,
+    viewport.y,
+  );
   return {
     spacing,
-    vertical: linesAlongAxis(
-      topLeft.x,
-      screenWidth,
-      spacing,
-      viewport.scale,
-      viewport.x,
-    ),
-    horizontal: linesAlongAxis(
-      topLeft.y,
-      screenHeight,
-      spacing,
-      viewport.scale,
-      viewport.y,
-    ),
+    vertical: x.major,
+    horizontal: y.major,
+    minorVertical: x.minor,
+    minorHorizontal: y.minor,
+    minorAlpha: minorGridAlpha(viewport.scale),
   };
 }

@@ -219,16 +219,39 @@ function drawGrid(
 
   ctx.strokeStyle = theme.gridLine;
   ctx.lineWidth = GRID_LINE_WIDTH;
-  ctx.beginPath();
 
-  for (const x of lines.vertical) {
+  strokeGridLines(ctx, lines.vertical, lines.horizontal, width, height);
+
+  // ひとつ細かい線を薄く先に出しておく。間隔が半分に切り替わるとき、
+  // この線がそのまま実線になる。濃さを 0 から上げてあるので、
+  // 切り替わりの瞬間に線が突然現れることがない。
+  ctx.globalAlpha = lines.minorAlpha;
+  strokeGridLines(
+    ctx,
+    lines.minorVertical,
+    lines.minorHorizontal,
+    width,
+    height,
+  );
+  ctx.globalAlpha = 1;
+}
+
+/** 指定した位置に縦横の線を引く。 */
+function strokeGridLines(
+  ctx: CanvasRenderingContext2D,
+  vertical: readonly number[],
+  horizontal: readonly number[],
+  width: number,
+  height: number,
+): void {
+  ctx.beginPath();
+  for (const x of vertical) {
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
   }
-  for (const y of lines.horizontal) {
+  for (const y of horizontal) {
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
   }
-
   ctx.stroke();
 }
