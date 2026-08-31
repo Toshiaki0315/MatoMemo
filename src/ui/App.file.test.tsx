@@ -91,7 +91,7 @@ function buildBoard() {
       clientY: (item?.y ?? 0) + (item?.height ?? 0) / 2,
     });
   }
-  click("接続");
+  // 線がつながると接続モードは自動で終わる
 }
 
 describe("保存", () => {
@@ -652,11 +652,12 @@ describe("Markdown 出力", () => {
     }
 
     const items = store.getState().board.items;
-    click("接続");
+    // 線がつながるたびに接続モードは自動で終わるので、1 本ごとに入り直す
     for (const [from, to] of [
       [0, 1],
       [1, 2],
     ] as const) {
+      click("接続");
       for (const index of [from, to]) {
         const item = items[index];
         fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
@@ -666,7 +667,6 @@ describe("Markdown 出力", () => {
         });
       }
     }
-    click("接続");
   }
 
   it("線のつながりを入れ子の箇条書きにする", async () => {

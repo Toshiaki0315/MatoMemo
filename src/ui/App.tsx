@@ -395,7 +395,7 @@ export function App({
         setConnectingFrom(id);
         return;
       }
-      connectItems(connectingFrom, id, connectorKind, {
+      const created = connectItems(connectingFrom, id, connectorKind, {
         start:
           connectorArrows === "start" || connectorArrows === "both"
             ? "arrow"
@@ -405,10 +405,16 @@ export function App({
             ? "arrow"
             : "none",
       });
-      // 続けて別の線を引けるよう、始点を空にしてモードは維持する
+      // 線が引けたら接続モードを終える。続けて引きたい場合より
+      // 1 本つないで通常の操作に戻りたい場合のほうが多い。
+      // 引けなかった場合（重複など）は、始点を選び直せるようモードを保つ。
+      if (created !== null) {
+        setConnectMode(false);
+        clearSelection();
+      }
       setConnectingFrom(null);
     },
-    [connectItems, connectingFrom, connectorArrows, connectorKind],
+    [clearSelection, connectItems, connectingFrom, connectorArrows, connectorKind],
   );
 
   /**

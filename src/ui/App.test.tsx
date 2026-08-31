@@ -753,7 +753,34 @@ describe("App: コネクタ", () => {
     expect(store.getState().board.connectors).toEqual([]);
   });
 
-  it("続けて別の線を引ける", () => {
+  it("つなぐと接続モードが自動で終わる", () => {
+    renderApp();
+    addTwoStickies();
+    const button = screen.getByRole("button", { name: "接続" });
+    fireEvent.click(button);
+    clickItem(0);
+    // 始点を選んだだけではモードを保つ
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    clickItem(1);
+    expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("線を引けなかったときはモードを保つ", () => {
+    renderApp();
+    addTwoStickies();
+    const button = screen.getByRole("button", { name: "接続" });
+    fireEvent.click(button);
+    // 同じアイテムを 2 回クリックしても線はできず、モードは終わらない
+    clickItem(0);
+    clickItem(0);
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    // そのまま選び直して線を引ける
+    clickItem(0);
+    clickItem(1);
+    expect(store.getState().board.connectors).toHaveLength(1);
+  });
+
+  it("続けて別の線を引くには接続を押し直す", () => {
     renderApp();
     addTwoStickies();
     fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
@@ -767,6 +794,7 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(1);
     clickItem(2);
     expect(store.getState().board.connectors).toHaveLength(2);
@@ -786,7 +814,6 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     fireEvent.keyDown(window, { key: "Delete" });
     expect(store.getState().board.connectors).toEqual([]);
@@ -813,7 +840,6 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
 
     const [first, second] = store.getState().board.items;
     fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
@@ -832,7 +858,6 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
 
     const [first, second] = store.getState().board.items;
     fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
@@ -854,7 +879,6 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
 
     const [first, second] = store.getState().board.items;
     // 2 枚の付箋の間、線の高さ
@@ -871,7 +895,6 @@ describe("App: コネクタ", () => {
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     clickItem(0);
     clickItem(1);
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
 
     const [first, second] = store.getState().board.items;
     fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
@@ -1143,7 +1166,7 @@ describe("App: 線の選択と編集", () => {
         clientY: (item?.y ?? 0) + 10,
       });
     }
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    // 線がつながると接続モードは自動で終わる
     return store.getState().board.items.map((item) => item.id);
   }
 
