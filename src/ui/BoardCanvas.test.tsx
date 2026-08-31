@@ -307,12 +307,56 @@ describe("BoardCanvas: ドラッグによるパン", () => {
     expect(onViewportChange).not.toHaveBeenCalled();
   });
 
-  it("パン中はカーソルを grabbing にする", () => {
+  it("Space で手のひらになり、パン中は grabbing にする", () => {
     const { canvas } = renderCanvas();
-    expect(canvas.style.cursor).toBe("grab");
+    // 既定は矢印。空白のドラッグは範囲選択なので、掴める見た目にしない
+    expect(canvas.style.cursor).toBe("default");
     holdSpace();
+    expect(canvas.style.cursor).toBe("grab");
     fireEvent.pointerDown(canvas, { button: 0, clientX: 0, clientY: 0 });
     expect(canvas.style.cursor).toBe("grabbing");
+    fireEvent.pointerUp(window);
+    expect(canvas.style.cursor).toBe("grab");
+    releaseSpace();
+    expect(canvas.style.cursor).toBe("default");
+  });
+
+  it("Space を押しながらならアイテムの上からでもパンする", () => {
+    const { canvas, onViewportChange, onMoveSelected } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    holdSpace();
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 50 });
+    expect(onViewportChange).toHaveBeenCalled();
+    expect(onMoveSelected).not.toHaveBeenCalled();
+  });
+
+  it("アイテムのドラッグ中に Space を押しても移動のまま", () => {
+    // 操作は掴んだ時点で確定している。途中の Space で切り替わると、
+    // 意図せずキャンバスが動いてしまう
+    const { canvas, onViewportChange, onMoveSelected } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    holdSpace();
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 50 });
+    expect(onMoveSelected).toHaveBeenCalled();
+    expect(onViewportChange).not.toHaveBeenCalled();
+  });
+
+  it("アイテムのドラッグ中に Space を押してもカーソルは手のひらにしない", () => {
+    // 実際の操作（アイテムの移動）と食い違う見た目を出さない
+    const { canvas } = renderCanvas({
+      board: boardWithSticky(),
+      selectedIds: new Set(["s1"]),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    holdSpace();
+    expect(canvas.style.cursor).toBe("default");
+    // ボタンを離せば、押している Space が手のひらとして効く
     fireEvent.pointerUp(window);
     expect(canvas.style.cursor).toBe("grab");
   });
@@ -723,13 +767,13 @@ describe("BoardCanvas: カーソル", () => {
     });
     fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
     fireEvent.pointerMove(canvas, { clientX: 50, clientY: 50 });
-    expect(canvas.style.cursor).toBe("grab");
+    expect(canvas.style.cursor).toBe("default");
   });
 
   it("選択していなければ通常のカーソルのまま", () => {
     const { canvas } = renderCanvas({ board: boardWithSticky() });
     fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100 });
-    expect(canvas.style.cursor).toBe("grab");
+    expect(canvas.style.cursor).toBe("default");
   });
 
   it("ドラッグ中はカーソルを変えない", () => {
@@ -1308,13 +1352,13 @@ describe("BoardCanvas: 端点のカーソル", () => {
     });
     fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
     fireEvent.pointerMove(canvas, { clientX: 200, clientY: 200 });
-    expect(canvas.style.cursor).toBe("grab");
+    expect(canvas.style.cursor).toBe("default");
   });
 
   it("線を選択していなければ端点の位置でも変わらない", () => {
     const { canvas } = renderCanvas({ board: boardWithConnector() });
     fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
-    expect(canvas.style.cursor).toBe("grab");
+    expect(canvas.style.cursor).toBe("default");
   });
 });
 

@@ -26,6 +26,7 @@ import {
 import { boardToMarkdown } from "../domain/markdown";
 import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
+import { setPanKeyHeld as setPanKeyHeldDefault } from "../platform/cursor";
 import {
   closeWindow as closeWindowDefault,
   guardWindowClose,
@@ -68,6 +69,8 @@ export interface AppProps {
   readonly closeGuard?: CloseRequestGuard;
   /** ウィンドウを実際に閉じる手段。テストでは差し替える。 */
   readonly closeWindow?: () => void | Promise<void>;
+  /** Space によるパンの開始・終了の通知先。テストでは差し替える。 */
+  readonly onPanKeyChange?: (held: boolean) => void;
 }
 
 /** 未保存の変更を捨てる確認が要る操作。 */
@@ -94,6 +97,7 @@ export function App({
   fileStore = getDefaultFileStore(),
   closeGuard = guardWindowClose,
   closeWindow = closeWindowDefault,
+  onPanKeyChange = setPanKeyHeldDefault,
 }: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
@@ -492,6 +496,39 @@ export function App({
     }, AUTOSAVE_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Space によるパンの開始・終了をプラットフォーム側に知らせる。
+  // macOS はキーが押されるたびにカーソルを隠すため、押した瞬間の隠蔽を
+  // 打ち消し、押している間のキーリピートを Rust 側で握りつぶしてもらう。
+  // テキスト入力中は通知しない（Space 連打の入力を殺さないため）。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.code !== "Space" ||
+        event.repeat ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+      onPanKeyChange(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        onPanKeyChange(false);
+      }
+    };
+    // ウィンドウから離れた隙に離された場合に備える
+    const handleBlur = () => onPanKeyChange(false);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [onPanKeyChange]);
 
   // ウィンドウを閉じる要求を横取りし、未保存なら確認してから閉じる。
   useEffect(() => {

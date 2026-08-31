@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_SCALE, MIN_SCALE } from "../domain/viewport";
 import { createBoardStore, type BoardStore } from "../store/boardStore";
 import { stubCanvasContext } from "../test/mockCanvas";
@@ -50,6 +50,59 @@ describe("App: 表示", () => {
 
   it("既定のストアでも描画できる", () => {
     expect(() => render(<App closeGuard={noopCloseGuard} />)).not.toThrow();
+  });
+});
+
+describe("App: パンキーの通知", () => {
+  function renderWithPanKey() {
+    const onPanKeyChange = vi.fn();
+    render(
+      <App
+        store={store}
+        closeGuard={noopCloseGuard}
+        onPanKeyChange={onPanKeyChange}
+      />,
+    );
+    return onPanKeyChange;
+  }
+
+  it("Space の押下と解放を知らせる", () => {
+    const onPanKeyChange = renderWithPanKey();
+    fireEvent.keyDown(window, { code: "Space" });
+    expect(onPanKeyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.keyUp(window, { code: "Space" });
+    expect(onPanKeyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("キーリピートでは知らせ直さない", () => {
+    const onPanKeyChange = renderWithPanKey();
+    fireEvent.keyDown(window, { code: "Space" });
+    fireEvent.keyDown(window, { code: "Space", repeat: true });
+    fireEvent.keyDown(window, { code: "Space", repeat: true });
+    expect(onPanKeyChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("Space 以外のキーでは知らせない", () => {
+    const onPanKeyChange = renderWithPanKey();
+    fireEvent.keyDown(window, { code: "KeyA" });
+    fireEvent.keyUp(window, { code: "KeyA" });
+    expect(onPanKeyChange).not.toHaveBeenCalled();
+  });
+
+  it("テキスト入力中の Space では知らせない", () => {
+    const onPanKeyChange = renderWithPanKey();
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    fireEvent.keyDown(input, { code: "Space" });
+    expect(onPanKeyChange).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("ウィンドウがフォーカスを失うと終了を知らせる", () => {
+    const onPanKeyChange = renderWithPanKey();
+    fireEvent.keyDown(window, { code: "Space" });
+    fireEvent.blur(window);
+    expect(onPanKeyChange).toHaveBeenLastCalledWith(false);
   });
 });
 

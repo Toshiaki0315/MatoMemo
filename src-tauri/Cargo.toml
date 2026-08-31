@@ -20,6 +20,11 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# キー入力によるカーソルの自動隠蔽への対策 (NSCursor / NSEvent モニタ)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", features = ["NSCursor", "NSEvent", "block2"] }
+block2 = "0.6"
+
 [profile.release]
 codegen-units = 1
 lto = true

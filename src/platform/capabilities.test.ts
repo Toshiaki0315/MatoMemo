@@ -17,6 +17,7 @@ import dialogPluginSource from "../../node_modules/@tauri-apps/plugin-dialog/dis
 import fsPluginSource from "../../node_modules/@tauri-apps/plugin-fs/dist-js/index.js?raw";
 import shellSource from "../../src-tauri/src/lib.rs?raw";
 import boardFileStoreSource from "./tauriBoardFileStore.ts?raw";
+import cursorSource from "./cursor.ts?raw";
 
 /**
  * アプリが使う Tauri の API と、それに必要な権限。
@@ -108,8 +109,10 @@ describe("独自コマンド", () => {
   it("フロントエンドが呼ぶコマンドが Rust 側で定義・登録されている", () => {
     const invoked = [
       ...boardFileStoreSource.matchAll(/invoke\("([a-z_]+)"/g),
+      ...cursorSource.matchAll(/invoke\("([a-z_]+)"/g),
     ].map((match) => match[1] as string);
     expect(invoked).toContain("write_text_file_atomic");
+    expect(invoked).toContain("set_pan_key_held");
     for (const command of invoked) {
       expect(shellSource, `${command} が定義されていません`).toContain(
         `fn ${command}(`,

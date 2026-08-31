@@ -173,6 +173,12 @@ export function BoardCanvas({
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  /**
+   * 何らかのドラッグ（移動・リサイズ・範囲選択など）の最中か。
+   * 操作は掴んだ時点で確定しているので、途中で Space を押されても
+   * カーソルを手のひらに変えないために使う。
+   */
+  const [dragActive, setDragActive] = useState(false);
   /** ポインタの下にあるハンドル。カーソルの見た目に使う。 */
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
   /** ポインタが線の端点の上にあるか。掴めることをカーソルで示す。 */
@@ -183,8 +189,13 @@ export function BoardCanvas({
   >(null);
   /** 範囲ドラッグ中の選択範囲（ワールド座標）。 */
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
-  /** Space が押されているか。押している間はドラッグがパンになる。 */
+  /**
+   * Space が押されているか。押している間はドラッグがパンになる。
+   * イベントリスナは一度しか登録しないため ref で読み、カーソルの
+   * 見た目（手のひら）にも反映するため state でも持つ。
+   */
   const spacePressed = useRef(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
 
   /**
    * 最新の props とドラッグ状態。
@@ -358,6 +369,14 @@ export function BoardCanvas({
         return;
       }
 
+      // Space を押している間は、どこを掴んでもキャンバスを動かす。
+      // カーソルも手のひらにしているので、掴む対象を選ばず一貫させる。
+      if (spacePressed.current) {
+        drag.current = { origin, mode: { kind: "pan" } };
+        setIsPanning(true);
+        return;
+      }
+
       // リサイズハンドルはアイテム本体より優先して判定する。
       // 角のハンドルはアイテムの内側にも重なっているため。
       const target = findResizeTarget(board.items, selectedIds);
@@ -419,13 +438,7 @@ export function BoardCanvas({
           return;
         }
         latest.current.onSelectConnector?.(null);
-        // Space を押しながらならキャンバスを動かす（デザインツールの慣例）。
-        // それ以外の空白ドラッグは範囲選択にする。
-        if (spacePressed.current) {
-          drag.current = { origin, mode: { kind: "pan" } };
-          setIsPanning(true);
-          return;
-        }
+        // 空白のドラッグは範囲選択にする（パンは Space + ドラッグ）
         drag.current = {
           origin,
           mode: {
@@ -588,6 +601,7 @@ export function BoardCanvas({
       }
       drag.current = null;
       setIsPanning(false);
+      setDragActive(false);
       setSelectionRect(null);
       if (current.mode.kind !== "pan" && current.mode.kind !== "select") {
         latest.current.onEndInteraction?.();
@@ -603,8 +617,15 @@ export function BoardCanvas({
       }
     };
 
+    /** ドラッグの開始判定を含むポインタ押下の処理。 */
+    const handlePointerDownAndTrack = (event: PointerEvent) => {
+      handlePointerDown(event);
+      // どの種類のドラッグが始まったかによらず「ドラッグ中」を記録する
+      setDragActive(drag.current !== null);
+    };
+
     canvas.addEventListener("wheel", handleWheel, { passive: false });
-    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointerdown", handlePointerDownAndTrack);
     canvas.addEventListener("dblclick", handleDoubleClick);
     canvas.addEventListener("contextmenu", handleContextMenu);
     canvas.addEventListener("pointermove", handleHover);
@@ -613,7 +634,7 @@ export function BoardCanvas({
 
     return () => {
       canvas.removeEventListener("wheel", handleWheel);
-      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointerdown", handlePointerDownAndTrack);
       canvas.removeEventListener("dblclick", handleDoubleClick);
       canvas.removeEventListener("contextmenu", handleContextMenu);
       canvas.removeEventListener("pointermove", handleHover);
@@ -628,6 +649,7 @@ export function BoardCanvas({
   useEffect(() => {
     const setPressed = (pressed: boolean) => {
       spacePressed.current = pressed;
+      setSpaceHeld(pressed);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code !== "Space" || isEditableTarget(event.target)) {
@@ -737,6 +759,7 @@ export function BoardCanvas({
         style={{
           cursor: currentCursor(
             isPanning,
+            spaceHeld && !dragActive,
             hoveredHandle,
             connectMode,
             hoveringConnectorEnd,
@@ -811,9 +834,19 @@ function findResizeTarget(
   return items.find((item) => selectedIds.has(item.id));
 }
 
-/** 状況に応じたカーソルの見た目。 */
+/**
+ * 状況に応じたカーソルの見た目。
+ *
+ * 既定は矢印で、クリックが「選択」を意味することを示す。手のひらは
+ * 実際に掴める（パンできる）ときだけ出す。掴めないのに手のひらを
+ * 出すと、空白のドラッグが範囲選択であることと食い違ってしまう。
+ *
+ * @param spaceHeld いま押せばパンになるか。ドラッグの最中は操作が
+ *   確定済みなので、Space が押されていても呼び出し側で false にする
+ */
 function currentCursor(
   isPanning: boolean,
+  spaceHeld: boolean,
   hoveredHandle: ResizeHandle | null,
   connectMode: boolean,
   hoveringConnectorEnd: boolean,
@@ -821,6 +854,13 @@ function currentCursor(
 ): string {
   if (connectMode) {
     return "crosshair";
+  }
+  if (isPanning) {
+    return "grabbing";
+  }
+  // Space を押している間はどこでも掴んでパンできる
+  if (spaceHeld) {
+    return "grab";
   }
   // 線の端点はアイテムの縁に重なるので、掴めることをカーソルで示す
   if (hoveringConnectorEnd) {
@@ -833,5 +873,5 @@ function currentCursor(
   if (hoveredHandle !== null) {
     return cursorForHandle(hoveredHandle);
   }
-  return isPanning ? "grabbing" : "grab";
+  return "default";
 }
