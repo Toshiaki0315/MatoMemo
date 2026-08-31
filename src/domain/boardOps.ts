@@ -41,14 +41,18 @@ export function connectorsOf(
  */
 export function removeItems(board: Board, ids: readonly ItemId[]): Board {
   const removing = new Set(ids);
-  return {
-    ...board,
-    items: board.items.filter((item) => !removing.has(item.id)),
-    connectors: board.connectors.filter(
-      (connector) =>
-        !removing.has(connector.fromItemId) && !removing.has(connector.toItemId),
-    ),
-  };
+  const items = board.items.filter((item) => !removing.has(item.id));
+  const connectors = board.connectors.filter(
+    (connector) =>
+      !removing.has(connector.fromItemId) && !removing.has(connector.toItemId),
+  );
+  if (
+    items.length === board.items.length &&
+    connectors.length === board.connectors.length
+  ) {
+    return board;
+  }
+  return { ...board, items, connectors };
 }
 
 /** コネクタを取り除く。 */
@@ -57,22 +61,24 @@ export function removeConnectors(
   ids: readonly ConnectorId[],
 ): Board {
   const removing = new Set(ids);
-  return {
-    ...board,
-    connectors: board.connectors.filter(
-      (connector) => !removing.has(connector.id),
-    ),
-  };
+  const connectors = board.connectors.filter(
+    (connector) => !removing.has(connector.id),
+  );
+  if (connectors.length === board.connectors.length) {
+    return board;
+  }
+  return { ...board, connectors };
 }
 
 /** 同じ id のアイテムを差し替える。重なり順は変わらない。 */
 export function replaceItem(board: Board, item: Item): Board {
-  return {
-    ...board,
-    items: board.items.map((existing) =>
-      existing.id === item.id ? item : existing,
-    ),
-  };
+  const index = board.items.findIndex((existing) => existing.id === item.id);
+  if (index === -1 || board.items[index] === item) {
+    return board;
+  }
+  const items = [...board.items];
+  items[index] = item;
+  return { ...board, items };
 }
 
 /** 指定したアイテムをワールド座標で平行移動する。 */

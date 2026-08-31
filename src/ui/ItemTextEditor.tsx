@@ -28,6 +28,12 @@ export interface ItemTextEditorProps {
   readonly item: TextEditableItem;
   readonly viewport: Viewport;
   readonly onChangeText: (text: string) => void;
+  /**
+   * 内容がアイテムの高さに収まらなくなったときに呼ばれる（ワールド座標）。
+   * テキストアイテムのみ。枠より外の文字は編集を終えると描かれないため、
+   * 枠のほうを内容に合わせて広げる。
+   */
+  readonly onGrowHeight?: (height: number) => void;
   readonly onClose: () => void;
 }
 
@@ -35,6 +41,7 @@ export function ItemTextEditor({
   item,
   viewport,
   onChangeText,
+  onGrowHeight,
   onClose,
 }: ItemTextEditorProps) {
   const [textarea, setTextarea] = useState<HTMLTextAreaElement | null>(null);
@@ -66,8 +73,26 @@ export function ItemTextEditor({
     }
     textarea.style.height = "auto";
     const lineHeight = fontSize * viewport.scale * LINE_HEIGHT_RATIO;
-    textarea.style.height = `${Math.max(textarea.scrollHeight, lineHeight)}px`;
-  }, [textarea, item.text, fontSize, viewport.scale]);
+    const contentHeight = Math.max(textarea.scrollHeight, lineHeight);
+    textarea.style.height = `${contentHeight}px`;
+
+    // テキストアイテムは枠の高さを内容に合わせて広げる。付箋・図形は
+    // 枠の大きさが主役なので広げず、収まらない分は描画側が省略する。
+    if (isStandaloneText) {
+      const required = contentHeight / viewport.scale;
+      if (required > item.height) {
+        onGrowHeight?.(required);
+      }
+    }
+  }, [
+    textarea,
+    item.text,
+    item.height,
+    fontSize,
+    viewport.scale,
+    isStandaloneText,
+    onGrowHeight,
+  ]);
 
   return (
     <div

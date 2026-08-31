@@ -4,6 +4,7 @@ import {
   CAP_LENGTHS,
   arrowDepth,
   arrowHead,
+  bendForPoint,
   capLength,
   trimPath,
   connectorEnds,
@@ -190,6 +191,66 @@ describe("connectorPath: 折れ線", () => {
         previous?.x === current?.x || previous?.y === current?.y;
       expect(isOrthogonal).toBe(true);
     }
+  });
+
+  it("折れる位置を指定できる (横並び)", () => {
+    // 始点 x:100、終点 x:300 の間の 1/4 の位置で折れる
+    const path = connectorPath("polyline", sticky(0, 0), sticky(300, 200), 0.25);
+    expect(points(path)).toEqual([
+      { x: 100, y: 50 },
+      { x: 150, y: 50 },
+      { x: 150, y: 250 },
+      { x: 300, y: 250 },
+    ]);
+  });
+
+  it("折れる位置を指定できる (縦並び)", () => {
+    const path = connectorPath("polyline", sticky(0, 0), sticky(200, 300), 0.25);
+    expect(points(path)).toEqual([
+      { x: 50, y: 100 },
+      { x: 50, y: 150 },
+      { x: 250, y: 150 },
+      { x: 250, y: 300 },
+    ]);
+  });
+
+  it("端まで寄せても経路が潰れない", () => {
+    // 0 や 1 ちょうどまで寄せると区間の長さが 0 になり、
+    // 矢印の向きが決められなくなる。少し内側で止まる。
+    const path = connectorPath("polyline", sticky(0, 0), sticky(300, 200), 0);
+    const list = points(path);
+    expect(list[1]?.x).toBeGreaterThan(100);
+    const path2 = connectorPath("polyline", sticky(0, 0), sticky(300, 200), 1);
+    expect(points(path2)[1]?.x).toBeLessThan(300);
+  });
+});
+
+describe("bendForPoint", () => {
+  it("横並びではドラッグ先の x から割合を求める", () => {
+    // 始点 x:100、終点 x:300 → x:150 は 1/4 の位置
+    expect(bendForPoint(sticky(0, 0), sticky(300, 200), { x: 150, y: 999 })).toBe(
+      0.25,
+    );
+  });
+
+  it("縦並びではドラッグ先の y から割合を求める", () => {
+    expect(bendForPoint(sticky(0, 0), sticky(200, 300), { x: 999, y: 150 })).toBe(
+      0.25,
+    );
+  });
+
+  it("範囲の外へ引いても有効な範囲に丸める", () => {
+    const bend = bendForPoint(sticky(0, 0), sticky(300, 200), { x: -500, y: 0 });
+    expect(bend).toBeGreaterThan(0);
+    const far = bendForPoint(sticky(0, 0), sticky(300, 200), { x: 900, y: 0 });
+    expect(far).toBeLessThan(1);
+  });
+
+  it("端点が同じ位置で按分できない場合は null", () => {
+    // 辺同士が接していて始点と終点の x が一致する
+    expect(
+      bendForPoint(sticky(0, 0), sticky(100, 0), { x: 100, y: 50 }),
+    ).toBeNull();
   });
 });
 

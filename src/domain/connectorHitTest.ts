@@ -65,7 +65,7 @@ export function connectorPolyline(
   fromItem: Item,
   toItem: Item,
 ): readonly Point[] {
-  const path = connectorPath(connector.kind, fromItem, toItem);
+  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
   if (path.kind === "polyline") {
     return path.points;
   }
@@ -166,11 +166,62 @@ export function hitTestConnectorEnd(
   }
 
   const reach = CONNECTOR_HANDLE_HIT_RADIUS / scale;
-  const path = connectorPath(connector.kind, fromItem, toItem);
+  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
   for (const { end, point: endPoint } of connectorEnds(path)) {
     if (Math.hypot(point.x - endPoint.x, point.y - endPoint.y) <= reach) {
       return { id: connector.id, end };
     }
   }
   return null;
+}
+
+/** 掴んだ折れ線の中間の線。 */
+export interface GrabbedConnectorBend {
+  readonly id: ConnectorId;
+  /** 中間の線が縦向き（左右に動かせる）か。カーソルの見た目に使う。 */
+  readonly verticalSegment: boolean;
+}
+
+/**
+ * 指定した折れ線コネクタの中間の線を掴んだかを判定する。
+ *
+ * 中間の線をドラッグすると折れる位置を変えられる。対象は選択中の
+ * 折れ線コネクタだけで、直線・曲線には中間の線が無い。
+ * @param scale 表示倍率。掴める距離は画面上で一定にしたいので換算する
+ */
+export function hitTestConnectorBend(
+  board: Board,
+  connectorId: ConnectorId | undefined,
+  point: Point,
+  scale: number,
+): GrabbedConnectorBend | null {
+  if (connectorId === undefined) {
+    return null;
+  }
+  const connector = board.connectors.find(
+    (candidate) => candidate.id === connectorId,
+  );
+  if (connector === undefined || connector.kind !== "polyline") {
+    return null;
+  }
+  const byId = new Map(board.items.map((item) => [item.id, item]));
+  const fromItem = byId.get(connector.fromItemId);
+  const toItem = byId.get(connector.toItemId);
+  if (fromItem === undefined || toItem === undefined) {
+    return null;
+  }
+
+  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
+  if (path.kind !== "polyline") {
+    return null;
+  }
+  const [, a, b] = path.points;
+  if (a === undefined || b === undefined) {
+    return null;
+  }
+  const tolerance = CONNECTOR_HIT_TOLERANCE / scale;
+  if (distanceToSegment(point, a, b) > tolerance) {
+    return null;
+  }
+  return { id: connector.id, verticalSegment: a.x === b.x };
 }

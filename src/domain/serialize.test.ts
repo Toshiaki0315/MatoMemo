@@ -462,6 +462,35 @@ describe("parseBoardFile: コネクタの検証", () => {
       "board.items[0] はオブジェクトである必要があります",
     ]);
   });
+
+  it("折れる位置 (bend) を復元する", () => {
+    const board = parseBoardFile(withConnectorField("bend", 0.25));
+    expect(board.connectors[0]?.bend).toBe(0.25);
+  });
+
+  it("bend が無い古いファイルは真ん中として読む", () => {
+    const board = parseBoardFile(
+      boardJson((b) => {
+        const connectors = b["connectors"] as Record<string, unknown>[];
+        const first = { ...connectors[0] };
+        delete first["bend"];
+        b["connectors"] = [first];
+      }),
+    );
+    expect(board.connectors[0]?.bend).toBe(0.5);
+  });
+
+  it("範囲外の bend は有効な範囲に丸める", () => {
+    const board = parseBoardFile(withConnectorField("bend", 5));
+    expect(board.connectors[0]?.bend).toBeLessThan(1);
+    expect(board.connectors[0]?.bend).toBeGreaterThan(0.9);
+  });
+
+  it("bend が数値でない場合はエラーにする", () => {
+    expect(catchError(withConnectorField("bend", "半分")).issues).toContain(
+      "board.connectors[0].bend は有限の数値である必要があります",
+    );
+  });
 });
 
 describe("parseBoardFile: 端の印", () => {

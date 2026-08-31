@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import { createBoard, createStickyNote } from "../domain/board";
 import { serializeBoard } from "../domain/serialize";
 import { StorageError } from "./boardFileStore";
 import { createTauriBoardFileStore } from "./tauriBoardFileStore";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
@@ -13,13 +18,12 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(),
-  writeTextFile: vi.fn(),
 }));
 
+const invokeMock = vi.mocked(invoke);
 const openDialogMock = vi.mocked(openDialog);
 const saveDialogMock = vi.mocked(saveDialog);
 const readTextFileMock = vi.mocked(readTextFile);
-const writeTextFileMock = vi.mocked(writeTextFile);
 
 function sampleBoard() {
   return {
@@ -58,18 +62,18 @@ describe("createTauriBoardFileStore: load", () => {
 });
 
 describe("createTauriBoardFileStore: save", () => {
-  it("シリアライズしてファイルに書き込む", async () => {
-    writeTextFileMock.mockResolvedValue(undefined);
+  it("シリアライズして安全な書き込みコマンドに渡す", async () => {
+    invokeMock.mockResolvedValue(undefined);
     const board = sampleBoard();
     await createTauriBoardFileStore().save("/tmp/a.matomemo", board);
-    expect(writeTextFileMock).toHaveBeenCalledWith(
-      "/tmp/a.matomemo",
-      serializeBoard(board),
-    );
+    expect(invokeMock).toHaveBeenCalledWith("write_text_file_atomic", {
+      path: "/tmp/a.matomemo",
+      contents: serializeBoard(board),
+    });
   });
 
   it("書き込みに失敗したら StorageError にする", async () => {
-    writeTextFileMock.mockRejectedValue(new Error("ENOSPC"));
+    invokeMock.mockRejectedValue(new Error("ENOSPC"));
     await expect(
       createTauriBoardFileStore().save("/tmp/a.matomemo", sampleBoard()),
     ).rejects.toThrow(StorageError);
@@ -113,15 +117,15 @@ describe("createTauriBoardFileStore: open", () => {
 describe("createTauriBoardFileStore: saveAs", () => {
   it("ダイアログで選ばれたパスに保存してパスを返す", async () => {
     saveDialogMock.mockResolvedValue("/tmp/new.matomemo");
-    writeTextFileMock.mockResolvedValue(undefined);
+    invokeMock.mockResolvedValue(undefined);
     const board = sampleBoard();
     expect(await createTauriBoardFileStore().saveAs(board)).toBe(
       "/tmp/new.matomemo",
     );
-    expect(writeTextFileMock).toHaveBeenCalledWith(
-      "/tmp/new.matomemo",
-      serializeBoard(board),
-    );
+    expect(invokeMock).toHaveBeenCalledWith("write_text_file_atomic", {
+      path: "/tmp/new.matomemo",
+      contents: serializeBoard(board),
+    });
   });
 
   it("ボード名を既定のファイル名として提案する", async () => {
@@ -136,7 +140,7 @@ describe("createTauriBoardFileStore: saveAs", () => {
   it("キャンセルされたら保存せず null を返す", async () => {
     saveDialogMock.mockResolvedValue(null);
     expect(await createTauriBoardFileStore().saveAs(sampleBoard())).toBeNull();
-    expect(writeTextFileMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("ダイアログが失敗したら StorageError にする", async () => {
@@ -152,14 +156,17 @@ describe("createTauriBoardFileStore: exportText", () => {
 
   it("選ばれたパスにテキストを書き出す", async () => {
     saveDialogMock.mockResolvedValue("/tmp/board.md");
-    writeTextFileMock.mockResolvedValue(undefined);
+    invokeMock.mockResolvedValue(undefined);
     const path = await createTauriBoardFileStore().exportText(
       "# 見出し\n",
       "board.md",
       filter,
     );
     expect(path).toBe("/tmp/board.md");
-    expect(writeTextFileMock).toHaveBeenCalledWith("/tmp/board.md", "# 見出し\n");
+    expect(invokeMock).toHaveBeenCalledWith("write_text_file_atomic", {
+      path: "/tmp/board.md",
+      contents: "# 見出し\n",
+    });
   });
 
   it("既定のファイル名と拡張子のフィルタを渡す", async () => {
@@ -176,7 +183,7 @@ describe("createTauriBoardFileStore: exportText", () => {
     expect(
       await createTauriBoardFileStore().exportText("x", "a.md", filter),
     ).toBeNull();
-    expect(writeTextFileMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("ダイアログが失敗したら StorageError にする", async () => {
@@ -188,7 +195,7 @@ describe("createTauriBoardFileStore: exportText", () => {
 
   it("書き込みが失敗したら StorageError にする", async () => {
     saveDialogMock.mockResolvedValue("/tmp/board.md");
-    writeTextFileMock.mockRejectedValue(new Error("ENOSPC"));
+    invokeMock.mockRejectedValue(new Error("ENOSPC"));
     await expect(
       createTauriBoardFileStore().exportText("x", "a.md", filter),
     ).rejects.toThrow(StorageError);

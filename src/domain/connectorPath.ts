@@ -6,6 +6,7 @@
  * 「常に今の位置から計算する」ことで、追従の実装そのものが不要になる。
  */
 
+import { clampBend, DEFAULT_BEND } from "./board";
 import type { CapSize, ConnectorKind, Item } from "./board";
 import { rectCenter, type Point, type Rect } from "./geometry";
 
@@ -123,14 +124,16 @@ function straightPath(from: Rect, to: Rect, fromItem: Item, toItem: Item) {
 /**
  * 直交する折れ線で結ぶ経路。
  * 向かい合う辺から出て、中間で一度だけ折れる 3 区間の経路にする。
+ * @param bend 中間の線の位置。始点側 0〜終点側 1 の割合
  */
-function polylinePath(from: Rect, to: Rect) {
+function polylinePath(from: Rect, to: Rect, bend: number) {
   const { fromSide, toSide, horizontal } = facingSides(from, to);
   const start = sideAnchor(from, fromSide);
   const end = sideAnchor(to, toSide);
+  const ratio = clampBend(bend);
 
   if (horizontal) {
-    const middleX = (start.x + end.x) / 2;
+    const middleX = start.x + (end.x - start.x) * ratio;
     return {
       kind: "polyline",
       points: [
@@ -141,11 +144,38 @@ function polylinePath(from: Rect, to: Rect) {
       ],
     } as const;
   }
-  const middleY = (start.y + end.y) / 2;
+  const middleY = start.y + (end.y - start.y) * ratio;
   return {
     kind: "polyline",
     points: [start, { x: start.x, y: middleY }, { x: end.x, y: middleY }, end],
   } as const;
+}
+
+/**
+ * ドラッグ先の点から、中間の線の位置（割合）を求める。
+ *
+ * 中間の線は、横並びなら左右、縦並びなら上下にだけ動かせる。
+ * 2 つのアイテムの端が同じ位置にあり按分が決められない場合は null。
+ */
+export function bendForPoint(
+  fromItem: Item,
+  toItem: Item,
+  point: Point,
+): number | null {
+  const from = boundsOf(fromItem);
+  const to = boundsOf(toItem);
+  const { fromSide, toSide, horizontal } = facingSides(from, to);
+  const start = sideAnchor(from, fromSide);
+  const end = sideAnchor(to, toSide);
+
+  const span = horizontal ? end.x - start.x : end.y - start.y;
+  if (span === 0) {
+    return null;
+  }
+  const value = horizontal
+    ? (point.x - start.x) / span
+    : (point.y - start.y) / span;
+  return clampBend(value);
 }
 
 /**
@@ -180,18 +210,22 @@ function curvedPath(from: Rect, to: Rect) {
   } as const;
 }
 
-/** コネクタの経路を、接続先アイテムの現在位置から求める。 */
+/**
+ * コネクタの経路を、接続先アイテムの現在位置から求める。
+ * @param bend 折れ線の中間の線の位置。折れ線以外では使わない
+ */
 export function connectorPath(
   kind: ConnectorKind,
   fromItem: Item,
   toItem: Item,
+  bend: number = DEFAULT_BEND,
 ): ConnectorPath {
   const from = boundsOf(fromItem);
   const to = boundsOf(toItem);
 
   switch (kind) {
     case "polyline":
-      return polylinePath(from, to);
+      return polylinePath(from, to, bend);
     case "curved":
       return curvedPath(from, to);
     default:

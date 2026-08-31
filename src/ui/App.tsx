@@ -34,6 +34,7 @@ import {
 import { useBoardStore, type BoardStore } from "../store/boardStore";
 import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { isEditableTarget } from "./editableTarget";
 import { ConnectorPropertiesPanel } from "./ConnectorPropertiesPanel";
 import { ContextMenu } from "./ContextMenu";
 import { FileBar } from "./FileBar";
@@ -111,6 +112,7 @@ export function App({
     (state) => state.removeSelectedConnector,
   );
   const reconnect = store((state) => state.reconnect);
+  const bendConnector = store((state) => state.bendConnector);
   const replaceConnector = store((state) => state.replaceConnector);
   const filePath = store((state) => state.filePath);
   const savedBoard = store((state) => state.savedBoard);
@@ -158,6 +160,13 @@ export function App({
   // 閉じる要求のハンドラは一度しか登録しないので、最新の値は ref から読む
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  /**
+   * 何番目のドキュメントを編集中か。新規・開くのたびに進める。
+   * 保存は非同期なので、完了したときには別のドキュメントに切り替わっている
+   * ことがある。そのまま保存済みとして記録すると、切り替え後のボードに
+   * 以前の保存先が付き、次の保存で別ファイルを黙って上書きしてしまう。
+   */
+  const documentEpochRef = useRef(0);
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
   const images = useImageCache(board.items);
@@ -257,16 +266,21 @@ export function App({
     async (path: string | null) => {
       setError(null);
       setBusy(true);
+      // 書き込みを待つ間に新規・開くでドキュメントが替わっていたら、
+      // 完了しても保存済みとは記録しない（保存先も引き継がない）。
+      const epoch = documentEpochRef.current;
       try {
         if (path === null) {
           const chosen = await fileStore.saveAs(board);
-          if (chosen !== null) {
-            markSaved(chosen);
+          if (chosen !== null && documentEpochRef.current === epoch) {
+            markSaved(chosen, board);
           }
           return;
         }
         await fileStore.save(path, board);
-        markSaved(path);
+        if (documentEpochRef.current === epoch) {
+          markSaved(path, board);
+        }
       } catch (cause) {
         reportFailure(cause);
       } finally {
@@ -307,6 +321,7 @@ export function App({
   const runPending = useCallback(
     async (action: PendingAction) => {
       if (action === "new") {
+        documentEpochRef.current += 1;
         newBoard();
         return;
       }
@@ -319,6 +334,7 @@ export function App({
       try {
         const opened = await fileStore.open();
         if (opened !== null) {
+          documentEpochRef.current += 1;
           openBoard(opened.board, opened.path);
         }
       } catch (cause) {
@@ -486,6 +502,11 @@ export function App({
       const key = event.key.toLowerCase();
       if (key === "s") {
         event.preventDefault();
+        // ボタンと同じく、ファイル操作の実行中は重ねて始めない。
+        // 特に保存の多重実行は、書き込みの競合や保存状態の混乱を招く。
+        if (busy) {
+          return;
+        }
         if (event.shiftKey) {
           handleSaveAs();
         } else {
@@ -493,17 +514,21 @@ export function App({
         }
         return;
       }
-      if (key === "o") {
+      if (key === "o" || key === "n") {
         event.preventDefault();
-        requestAction("open");
-        return;
-      }
-      if (key === "n") {
-        event.preventDefault();
-        requestAction("new");
+        // 文字入力中は誤爆しやすい破壊的な操作なので受け付けない
+        if (busy || isEditableTarget(event.target)) {
+          return;
+        }
+        requestAction(key === "o" ? "open" : "new");
         return;
       }
       if (key === "z") {
+        // 文字入力中は入力欄自身の取り消しに任せる。ボード全体を戻すと、
+        // 編集の途中でアイテムごと消えることがある。
+        if (isEditableTarget(event.target)) {
+          return;
+        }
         event.preventDefault();
         if (event.shiftKey) {
           redo();
@@ -514,7 +539,7 @@ export function App({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleSaveAs, redo, requestAction, undo]);
+  }, [busy, handleSave, handleSaveAs, redo, requestAction, undo]);
 
   const zoomPercent = Math.round(clampScale(viewport.scale) * 100);
 
@@ -560,6 +585,7 @@ export function App({
         {...(selectedConnectorId !== null ? { selectedConnectorId } : {})}
         onSelectConnector={selectConnector}
         onReconnect={reconnect}
+        onBendConnector={bendConnector}
         onMoveSelected={moveSelected}
         onResizeItem={resizeItem}
         onDeleteSelected={handleDeleteSelected}
@@ -579,6 +605,7 @@ export function App({
           item={editingItem}
           viewport={viewport}
           onChangeText={(text) => replaceItem({ ...editingItem, text })}
+          onGrowHeight={(height) => replaceItem({ ...editingItem, height })}
           onClose={() => setEditingId(null)}
         />
       ) : null}

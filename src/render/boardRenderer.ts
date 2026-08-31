@@ -187,7 +187,7 @@ function drawConnectors(
     if (fromItem === undefined || toItem === undefined) {
       continue;
     }
-    const path = connectorPath(connector.kind, fromItem, toItem);
+    const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
     const selected = connector.id === options.selectedConnectorId;
     drawConnector(ctx, path, options.viewport.scale, {
       selected,

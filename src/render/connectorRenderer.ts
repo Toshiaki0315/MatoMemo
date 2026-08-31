@@ -173,6 +173,7 @@ function distance(a: Point, b: Point): number {
 /**
  * 選択中のコネクタの端点にハンドルを描く。
  * ここを掴んで別のアイテムへ運ぶと接続先を付け替えられる。
+ * 折れ線には中間の線の真ん中にもハンドルを描き、掴んで動かせることを示す。
  */
 export function drawConnectorHandles(
   ctx: CanvasRenderingContext2D,
@@ -191,4 +192,25 @@ export function drawConnectorHandles(
     ctx.fill();
     ctx.stroke();
   }
+
+  const middle = bendHandlePosition(path);
+  if (middle !== null) {
+    ctx.beginPath();
+    ctx.arc(middle.x, middle.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+/** 折れ線の中間の線の真ん中。折れ線以外（直線・曲線）は null。 */
+function bendHandlePosition(path: ConnectorPath): Point | null {
+  if (path.kind !== "polyline" || path.points.length < 4) {
+    return null;
+  }
+  const a = path.points[1];
+  const b = path.points[2];
+  if (a === undefined || b === undefined) {
+    return null;
+  }
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }

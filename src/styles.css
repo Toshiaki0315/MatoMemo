@@ -9,6 +9,8 @@
   --toolbar-hover: rgba(0, 0, 0, 0.06);
   --toolbar-active: #3b82f6;
   --toolbar-active-text: #ffffff;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +21,8 @@
     --toolbar-hover: rgba(255, 255, 255, 0.1);
     --toolbar-active: #3b82f6;
     --toolbar-active-text: #ffffff;
+    --scrollbar-thumb: rgba(255, 255, 255, 0.3);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.5);
   }
 }
 
@@ -512,4 +516,49 @@ body,
 
 .connector-properties button:hover {
   background: var(--toolbar-hover);
+}
+
+/*
+ * キャンバスのスクロールバー。内容が画面の外にあるときだけ現れる。
+ * キャンバスは無限に広がるため OS のスクロールバーは使えず、
+ * 「内容全体と今見えている範囲」を合わせた範囲に対して自前で描く。
+ */
+.canvas-scrollbar {
+  position: absolute;
+}
+
+.canvas-scrollbar-horizontal {
+  left: 0;
+  right: 12px;
+  bottom: 0;
+  height: 12px;
+}
+
+.canvas-scrollbar-vertical {
+  top: 0;
+  bottom: 12px;
+  right: 0;
+  width: 12px;
+}
+
+.canvas-scrollbar-thumb {
+  position: absolute;
+  border-radius: 4px;
+  background: var(--scrollbar-thumb);
+  /* touch-action を切っておかないと、ドラッグがスクロール操作に化ける */
+  touch-action: none;
+}
+
+.canvas-scrollbar-horizontal .canvas-scrollbar-thumb {
+  top: 2px;
+  bottom: 2px;
+}
+
+.canvas-scrollbar-vertical .canvas-scrollbar-thumb {
+  left: 2px;
+  right: 2px;
+}
+
+.canvas-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }

@@ -120,6 +120,82 @@ describe("保存", () => {
     });
   });
 
+  it("保存を待つ間に加えた変更は保存済みにならない", async () => {
+    fileStore.savePath = "/tmp/board.matomemo";
+    // 書き込みの完了をテスト側から制御できるようにする
+    let release = () => {};
+    const originalSave = fileStore.save.bind(fileStore);
+    fileStore.save = (path, board) =>
+      new Promise((resolve) => {
+        release = () => resolve(originalSave(path, board));
+      });
+    renderApp();
+    click("黄色の付箋を追加");
+    click("保存");
+
+    // 書き込みが終わる前にさらに編集する
+    click("黄色の付箋を追加");
+    act(() => release());
+
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/board.matomemo")).toBe(true);
+    });
+    // 保存されたのは 1 枚目まで。2 枚目はまだディスクに無いので未保存のまま
+    expect(screen.getByRole("status")).toHaveAccessibleName(
+      "未保存の変更があります",
+    );
+  });
+
+  it("保存の実行中は ⌘S を重ねて受け付けない", async () => {
+    fileStore.savePath = "/tmp/board.matomemo";
+    let release = () => {};
+    let saveCalls = 0;
+    const originalSave = fileStore.save.bind(fileStore);
+    fileStore.save = (path, board) => {
+      saveCalls += 1;
+      return new Promise((resolve) => {
+        release = () => resolve(originalSave(path, board));
+      });
+    };
+    renderApp();
+    click("黄色の付箋を追加");
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    act(() => release());
+
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/board.matomemo")).toBe(true);
+    });
+    expect(saveCalls).toBe(1);
+  });
+
+  it("保存を待つ間に新規にしても、保存先と保存済み状態を引き継がない", async () => {
+    fileStore.savePath = "/tmp/board.matomemo";
+    let release = () => {};
+    const originalSave = fileStore.save.bind(fileStore);
+    fileStore.save = (path, board) =>
+      new Promise((resolve) => {
+        release = () => resolve(originalSave(path, board));
+      });
+    renderApp();
+    click("黄色の付箋を追加");
+
+    // 確認ダイアログを出し、保存を始めてから「破棄して続行」で新規にする
+    click("新規");
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    click("破棄して続行");
+    act(() => release());
+
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/board.matomemo")).toBe(true);
+    });
+    // 新しい空のボードに、切り替え前の保存先や保存済み状態が付いてはいけない。
+    // 付くと、次の保存が以前のファイルを黙って上書きしてしまう。
+    expect(store.getState().board.items).toEqual([]);
+    expect(store.getState().filePath).toBeNull();
+    expect(store.getState().isDirty()).toBe(false);
+  });
+
   it("2 回目の保存はダイアログを出さず同じファイルに書く", async () => {
     fileStore.savePath = "/tmp/board.matomemo";
     renderApp();
@@ -263,7 +339,7 @@ describe("読み込み", () => {
     renderApp();
     click("黄色の付箋を追加");
     const before = store.getState().board;
-    act(() => store.getState().markSaved("/tmp/x.matomemo"));
+    act(() => store.getState().markSaved("/tmp/x.matomemo", store.getState().board));
 
     fileStore.openPath = null;
     click("開く");
@@ -288,7 +364,7 @@ describe("読み込み", () => {
     renderApp();
     click("黄色の付箋を追加");
     // 未保存だと確認ダイアログが挟まるので、保存済みの状態にしておく
-    act(() => store.getState().markSaved("/tmp/x.matomemo"));
+    act(() => store.getState().markSaved("/tmp/x.matomemo", store.getState().board));
     const before = store.getState().board;
     fileStore.openPath = "/tmp/missing.matomemo";
     click("開く");

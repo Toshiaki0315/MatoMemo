@@ -15,6 +15,8 @@ import capability from "../../src-tauri/capabilities/default.json";
 // パッケージの exports で公開されていないので、実ファイルを直接読む
 import dialogPluginSource from "../../node_modules/@tauri-apps/plugin-dialog/dist-js/index.js?raw";
 import fsPluginSource from "../../node_modules/@tauri-apps/plugin-fs/dist-js/index.js?raw";
+import shellSource from "../../src-tauri/src/lib.rs?raw";
+import boardFileStoreSource from "./tauriBoardFileStore.ts?raw";
 
 /**
  * アプリが使う Tauri の API と、それに必要な権限。
@@ -40,11 +42,9 @@ const REQUIRED_PERMISSIONS: readonly {
     command: "plugin:fs|read_text_file",
     permission: "fs:allow-read-text-file",
   },
-  {
-    api: "fs.writeTextFile (ボードの保存)",
-    command: "plugin:fs|write_text_file",
-    permission: "fs:allow-write-text-file",
-  },
+  // ボードの保存は fs プラグインではなく独自コマンド (write_text_file_atomic)
+  // で行う。独自コマンドは権限設定が不要なため、この表には載せない。
+  // 実在の確認は下の「独自コマンド」で行う。
   {
     api: "fs.readFile (画像の取り込み)",
     command: "plugin:fs|read_file",
@@ -99,6 +99,23 @@ describe("JS の API が呼ぶコマンド名", () => {
       }
       expect(commands, `${entry.api} のコマンド名が変わっています`).toContain(
         entry.command,
+      );
+    }
+  });
+});
+
+describe("独自コマンド", () => {
+  it("フロントエンドが呼ぶコマンドが Rust 側で定義・登録されている", () => {
+    const invoked = [
+      ...boardFileStoreSource.matchAll(/invoke\("([a-z_]+)"/g),
+    ].map((match) => match[1] as string);
+    expect(invoked).toContain("write_text_file_atomic");
+    for (const command of invoked) {
+      expect(shellSource, `${command} が定義されていません`).toContain(
+        `fn ${command}(`,
+      );
+      expect(shellSource, `${command} が登録されていません`).toMatch(
+        new RegExp(`generate_handler!\\[[^\\]]*${command}`),
       );
     }
   });

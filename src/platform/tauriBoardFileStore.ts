@@ -6,11 +6,12 @@
  * インタフェースにのみ依存する。
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import {
   open as openDialog,
   save as saveDialog,
 } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { Board } from "../domain/board";
 import { parseBoardFile, serializeBoard } from "../domain/serialize";
 import {
@@ -26,6 +27,20 @@ const DIALOG_FILTERS = [
   { name: BOARD_FILE_FILTER.name, extensions: [...BOARD_FILE_FILTER.extensions] },
 ];
 
+/**
+ * 一時ファイルに書いてから rename で置き換える保存（Rust 側のコマンド）。
+ *
+ * `writeTextFile` は保存先を直接上書きするため、書き込みが途中で失敗すると
+ * 元の内容まで失われる。既存のファイルを壊さないよう、書き込みはすべて
+ * こちらを使う。
+ */
+async function writeTextFileAtomic(
+  path: string,
+  contents: string,
+): Promise<void> {
+  await invoke("write_text_file_atomic", { path, contents });
+}
+
 export function createTauriBoardFileStore(): BoardFileStore {
   async function load(path: string): Promise<Board> {
     let text: string;
@@ -40,7 +55,7 @@ export function createTauriBoardFileStore(): BoardFileStore {
 
   async function save(path: string, board: Board): Promise<void> {
     try {
-      await writeTextFile(path, serializeBoard(board));
+      await writeTextFileAtomic(path, serializeBoard(board));
     } catch (cause) {
       throw new StorageError(`ファイルを保存できませんでした: ${path}`, cause);
     }
@@ -103,7 +118,7 @@ export function createTauriBoardFileStore(): BoardFileStore {
         return null;
       }
       try {
-        await writeTextFile(path, text);
+        await writeTextFileAtomic(path, text);
       } catch (cause) {
         throw new StorageError(`ファイルを書き出せませんでした: ${path}`, cause);
       }

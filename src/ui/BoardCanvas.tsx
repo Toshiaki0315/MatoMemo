@@ -5,13 +5,21 @@
  * ズーム倍率の表示やツールバーなど外側の UI と同じ状態を共有するため。
  */
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
 import type { Rect } from "../domain/geometry";
 import {
   hitTestConnector,
+  hitTestConnectorBend,
   hitTestConnectorEnd,
 } from "../domain/connectorHitTest";
+import { bendForPoint } from "../domain/connectorPath";
+import { findItem } from "../domain/boardOps";
 import { rectFromCorners, type Point } from "../domain/geometry";
 import { hitTest, itemsWithinRect } from "../domain/hitTest";
 import {
@@ -19,15 +27,23 @@ import {
   hitTestHandle,
   type ResizeHandle,
 } from "../domain/resize";
+import { scrollbarModel, type ScrollbarTrack } from "../domain/scrollbars";
 import { panBy, toWorld, zoomAt, type Viewport } from "../domain/viewport";
 import { renderBoard, type CanvasTheme } from "../render/boardRenderer";
 import type { ImageCache } from "../render/itemRenderer";
+import { isEditableTarget } from "./editableTarget";
 
 /**
  * ホイールの移動量をズーム倍率に変換する係数。
  * macOS のトラックパッドのピンチ操作は ctrlKey 付きの wheel として届く。
  */
 const ZOOM_SENSITIVITY = 0.01;
+
+/** スクロールバーの帯の太さ (px)。もう一方のバーと重ならない余白も兼ねる。 */
+const SCROLLBAR_GUTTER = 12;
+
+/** つまみの最小の長さ (px)。短すぎると掴めないため。 */
+const MIN_THUMB_LENGTH = 24;
 
 export interface BoardCanvasProps {
   readonly board: Board;
@@ -43,6 +59,8 @@ export interface BoardCanvasProps {
     end: "from" | "to",
     itemId: ItemId,
   ) => void;
+  /** 折れ線の中間の線をドラッグしたとき。bend は始点側 0〜終点側 1。 */
+  readonly onBendConnector?: (id: ConnectorId, bend: number) => void;
   readonly onViewportChange: (viewport: Viewport) => void;
   /**
    * アイテムが押されたときに呼ばれる。
@@ -117,6 +135,11 @@ type DragMode =
       readonly id: ConnectorId;
       /** 掴んでいるのがどちらの端か。 */
       readonly end: "from" | "to";
+    }
+  | {
+      /** 折れ線の中間の線を動かして折れる位置を変える。 */
+      readonly kind: "bend";
+      readonly id: ConnectorId;
     };
 
 export function BoardCanvas({
@@ -126,6 +149,7 @@ export function BoardCanvas({
   selectedConnectorId,
   onSelectConnector,
   onReconnect,
+  onBendConnector,
   onViewportChange,
   onSelect,
   onSelectMany,
@@ -152,6 +176,10 @@ export function BoardCanvas({
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
   /** ポインタが線の端点の上にあるか。掴めることをカーソルで示す。 */
   const [hoveringConnectorEnd, setHoveringConnectorEnd] = useState(false);
+  /** ポインタの下にある折れ線の中間の線の向き。カーソルの見た目に使う。 */
+  const [hoveredBendSegment, setHoveredBendSegment] = useState<
+    "vertical" | "horizontal" | null
+  >(null);
   /** 範囲ドラッグ中の選択範囲（ワールド座標）。 */
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
   /** Space が押されているか。押している間はドラッグがパンになる。 */
@@ -164,13 +192,17 @@ export function BoardCanvas({
    * 張り替えない。props を依存配列に入れると、ドラッグ中の状態更新の
    * たびにリスナが張り替えられ、進行中のドラッグが途切れてしまう。
    */
-  const latest = useRef({
+  // オブジェクトは一度だけ組み立てて初期値と更新で共用する。
+  // 2 か所に同じ列挙を書くと、項目を増やしたときに片方だけ直して
+  // 「初回の値のまま古くなる」バグを招くため。
+  const latestProps = {
     board,
     viewport,
     selectedIds,
     selectedConnectorId,
     onSelectConnector,
     onReconnect,
+    onBendConnector,
     onViewportChange,
     onSelect,
     onSelectMany,
@@ -182,33 +214,33 @@ export function BoardCanvas({
     onPickForConnection,
     onBeginInteraction,
     onEndInteraction,
-  });
+  };
+  const latest = useRef(latestProps);
   useEffect(() => {
-    latest.current = {
-      board,
-      viewport,
-      selectedIds,
-      selectedConnectorId,
-      onSelectConnector,
-      onReconnect,
-      onViewportChange,
-      onSelect,
-      onSelectMany,
-      onMoveSelected,
-      onResizeItem,
-      onContextMenu,
-      onActivateItem,
-      connectMode,
-      onPickForConnection,
-      onBeginInteraction,
-      onEndInteraction,
-    };
+    latest.current = latestProps;
   });
 
   /** ドラッグ中の状態。リスナの張り替えをまたいで保持する必要がある。 */
   const drag = useRef<{
     origin: { x: number; y: number };
     mode: DragMode;
+  } | null>(null);
+
+  /**
+   * スクロールバーのつまみをドラッグ中の状態。
+   *
+   * 換算係数は開始時に固定する。ドラッグでビューポートが動くと
+   * スクロール範囲も動いて再計算されるため、毎回計算し直すと
+   * つまみが指を追い越したり遅れたりしてしまう。
+   */
+  const scrollDrag = useRef<{
+    axis: "x" | "y";
+    /** pointerdown 時の clientX / clientY。 */
+    origin: number;
+    /** 開始時のビューポート。 */
+    viewport: Viewport;
+    /** つまみを 1px 動かしたときのワールド座標の移動量。 */
+    worldPerPixel: number;
   } | null>(null);
 
   // 要素のサイズに追従する。
@@ -359,6 +391,22 @@ export function BoardCanvas({
         return;
       }
 
+      // 選択中の折れ線の中間の線。掴んで折れる位置を変えられる。
+      const bendGrab = hitTestConnectorBend(
+        board,
+        latest.current.selectedConnectorId,
+        world,
+        viewport.scale,
+      );
+      if (bendGrab !== null) {
+        drag.current = {
+          origin,
+          mode: { kind: "bend", id: bendGrab.id },
+        };
+        latest.current.onBeginInteraction?.();
+        return;
+      }
+
       const hit = hitTest(board.items, world);
       const additive = event.shiftKey || event.metaKey;
 
@@ -443,6 +491,27 @@ export function BoardCanvas({
         }
         return;
       }
+      if (current.mode.kind === "bend") {
+        const { board } = latest.current;
+        const bendId = current.mode.id;
+        const connector = board.connectors.find(
+          (candidate) => candidate.id === bendId,
+        );
+        if (connector === undefined) {
+          return;
+        }
+        const fromItem = findItem(board, connector.fromItemId);
+        const toItem = findItem(board, connector.toItemId);
+        if (fromItem === undefined || toItem === undefined) {
+          return;
+        }
+        const world = toWorld(viewport, toCanvasPoint(event));
+        const bend = bendForPoint(fromItem, toItem, world);
+        if (bend !== null) {
+          latest.current.onBendConnector?.(current.mode.id, bend);
+        }
+        return;
+      }
       if (current.mode.kind === "resize") {
         onResizeItem(
           current.mode.id,
@@ -468,6 +537,16 @@ export function BoardCanvas({
       setHoveringConnectorEnd(
         hitTestConnectorEnd(board, selectedConnectorId, world, viewport.scale) !==
           null,
+      );
+
+      const bend = hitTestConnectorBend(
+        board,
+        selectedConnectorId,
+        world,
+        viewport.scale,
+      );
+      setHoveredBendSegment(
+        bend === null ? null : bend.verticalSegment ? "vertical" : "horizontal",
       );
 
       const target = findResizeTarget(board.items, selectedIds);
@@ -592,21 +671,152 @@ export function BoardCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onDeleteSelected]);
 
+  // スクロールバー。内容が画面の外にあるときだけ現れる。
+  const scrollbars = scrollbarModel(board.items, viewport, size);
+  const trackLengths = {
+    x: size.width - SCROLLBAR_GUTTER,
+    y: size.height - SCROLLBAR_GUTTER,
+  };
+  const horizontalThumb =
+    scrollbars.horizontal === null || trackLengths.x <= MIN_THUMB_LENGTH
+      ? null
+      : thumbLayout(scrollbars.horizontal, trackLengths.x);
+  const verticalThumb =
+    scrollbars.vertical === null || trackLengths.y <= MIN_THUMB_LENGTH
+      ? null
+      : thumbLayout(scrollbars.vertical, trackLengths.y);
+
+  const beginScrollDrag =
+    (axis: "x" | "y", track: ScrollbarTrack, movable: number) =>
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (movable <= 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      // ポインタを捕まえ、つまみの外へ出てもドラッグが続くようにする
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // テスト環境 (jsdom) では使えない。つまみの上で動かす分には追従する
+      }
+      scrollDrag.current = {
+        axis,
+        origin: axis === "x" ? event.clientX : event.clientY,
+        viewport,
+        worldPerPixel: track.scrollableWorld / movable,
+      };
+    };
+
+  const moveScrollDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = scrollDrag.current;
+    if (current === null) {
+      return;
+    }
+    const position = current.axis === "x" ? event.clientX : event.clientY;
+    const deltaScreen =
+      (position - current.origin) *
+      current.worldPerPixel *
+      current.viewport.scale;
+    onViewportChange(
+      current.axis === "x"
+        ? { ...current.viewport, x: current.viewport.x - deltaScreen }
+        : { ...current.viewport, y: current.viewport.y - deltaScreen },
+    );
+  };
+
+  const endScrollDrag = () => {
+    scrollDrag.current = null;
+  };
+
   return (
-    <canvas
-      ref={setCanvas}
-      data-testid="board-canvas"
-      className="board-canvas"
-      style={{
-        cursor: currentCursor(
-          isPanning,
-          hoveredHandle,
-          connectMode,
-          hoveringConnectorEnd,
-        ),
-      }}
-    />
+    <>
+      <canvas
+        ref={setCanvas}
+        data-testid="board-canvas"
+        className="board-canvas"
+        style={{
+          cursor: currentCursor(
+            isPanning,
+            hoveredHandle,
+            connectMode,
+            hoveringConnectorEnd,
+            hoveredBendSegment,
+          ),
+        }}
+      />
+      {scrollbars.horizontal !== null && horizontalThumb !== null ? (
+        <div className="canvas-scrollbar canvas-scrollbar-horizontal">
+          <div
+            role="scrollbar"
+            aria-label="横スクロール"
+            aria-orientation="horizontal"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(
+              scrollbars.horizontal.thumbPosition * 100,
+            )}
+            className="canvas-scrollbar-thumb"
+            style={{
+              left: horizontalThumb.offset,
+              width: horizontalThumb.length,
+            }}
+            onPointerDown={beginScrollDrag(
+              "x",
+              scrollbars.horizontal,
+              horizontalThumb.movable,
+            )}
+            onPointerMove={moveScrollDrag}
+            onPointerUp={endScrollDrag}
+            onPointerCancel={endScrollDrag}
+          />
+        </div>
+      ) : null}
+      {scrollbars.vertical !== null && verticalThumb !== null ? (
+        <div className="canvas-scrollbar canvas-scrollbar-vertical">
+          <div
+            role="scrollbar"
+            aria-label="縦スクロール"
+            aria-orientation="vertical"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(scrollbars.vertical.thumbPosition * 100)}
+            className="canvas-scrollbar-thumb"
+            style={{
+              top: verticalThumb.offset,
+              height: verticalThumb.length,
+            }}
+            onPointerDown={beginScrollDrag(
+              "y",
+              scrollbars.vertical,
+              verticalThumb.movable,
+            )}
+            onPointerMove={moveScrollDrag}
+            onPointerUp={endScrollDrag}
+            onPointerCancel={endScrollDrag}
+          />
+        </div>
+      ) : null}
+    </>
   );
+}
+
+/**
+ * つまみの画面上の寸法 (px)。
+ *
+ * 掴めるよう最小の長さを確保する。その分だけ割合どおりの位置から
+ * ずれるため、位置は「動かせる余白の中の割合」として計算し直す。
+ */
+function thumbLayout(
+  track: ScrollbarTrack,
+  trackLength: number,
+): { readonly length: number; readonly movable: number; readonly offset: number } {
+  const length = Math.min(
+    Math.max(track.thumbSize * trackLength, MIN_THUMB_LENGTH),
+    trackLength,
+  );
+  const movable = trackLength - length;
+  return { length, movable, offset: track.thumbPosition * movable };
 }
 
 /** 1 件だけ選択しているアイテムを返す。リサイズの対象。 */
@@ -626,6 +836,7 @@ function currentCursor(
   hoveredHandle: ResizeHandle | null,
   connectMode: boolean,
   hoveringConnectorEnd: boolean,
+  hoveredBendSegment: "vertical" | "horizontal" | null,
 ): string {
   if (connectMode) {
     return "crosshair";
@@ -634,20 +845,12 @@ function currentCursor(
   if (hoveringConnectorEnd) {
     return "move";
   }
+  // 折れ線の中間の線は、縦向きなら左右、横向きなら上下に動かせる
+  if (hoveredBendSegment !== null) {
+    return hoveredBendSegment === "vertical" ? "ew-resize" : "ns-resize";
+  }
   if (hoveredHandle !== null) {
     return cursorForHandle(hoveredHandle);
   }
   return isPanning ? "grabbing" : "grab";
-}
-
-/** テキスト入力欄にフォーカスがあるかを判定する。 */
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.isContentEditable
-  );
 }

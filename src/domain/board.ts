@@ -172,6 +172,23 @@ export interface Connector extends StrokeSettings {
   readonly endCap: EndCap;
   /** 両端の印の大きさ。 */
   readonly capSize: CapSize;
+  /**
+   * 折れ線の中間の線の位置。始点側 0〜終点側 1 の割合。
+   * 割合で持つことで、アイテムを動かしても折れ方の按分が保たれる。
+   * 折れ線以外の種類では使わない。
+   */
+  readonly bend: number;
+}
+
+/** 折れ線の中間の線の既定の位置（ちょうど真ん中）。 */
+export const DEFAULT_BEND = 0.5;
+
+/** 中間の線を端へ寄せられる限界。0 や 1 まで寄せると経路が潰れてしまう。 */
+const BEND_MARGIN = 0.02;
+
+/** 中間の線の位置を有効な範囲に丸める。 */
+export function clampBend(bend: number): number {
+  return Math.min(Math.max(bend, BEND_MARGIN), 1 - BEND_MARGIN);
 }
 
 /** ホワイトボード 1 枚分の状態。 */
@@ -358,6 +375,7 @@ export function createConnector(params: {
   readonly capSize?: CapSize;
   readonly strokeWidth?: number;
   readonly strokeStyle?: StrokeStyle;
+  readonly bend?: number;
 }): Connector {
   return {
     id: params.id,
@@ -369,5 +387,6 @@ export function createConnector(params: {
     capSize: params.capSize ?? "medium",
     strokeWidth: params.strokeWidth ?? DEFAULT_CONNECTOR_STROKE.strokeWidth,
     strokeStyle: params.strokeStyle ?? DEFAULT_CONNECTOR_STROKE.strokeStyle,
+    bend: params.bend ?? DEFAULT_BEND,
   };
 }

@@ -11,6 +11,8 @@
 
 import {
   BOXED_TEXT_DEFAULTS,
+  clampBend,
+  DEFAULT_BEND,
   DEFAULT_CONNECTOR_STROKE,
   DEFAULT_SHAPE_FILL,
   DEFAULT_STROKE,
@@ -333,6 +335,12 @@ function parseConnector(
       raw["capSize"] === undefined
         ? "medium"
         : readEnum<CapSize>(raw, "capSize", CAP_SIZES, "medium", path, issues),
+    // 折れ線の中間の線の位置は後から加わった項目。無ければ真ん中とする。
+    // 範囲外の値は経路が潰れないよう有効な範囲に丸める。
+    bend:
+      raw["bend"] === undefined
+        ? DEFAULT_BEND
+        : clampBend(readNumber(raw, "bend", path, issues)),
   };
 }
 

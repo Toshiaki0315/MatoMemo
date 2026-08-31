@@ -71,6 +71,8 @@ export function cursorForHandle(handle: ResizeHandle): string {
  *
  * ハンドルは拡大率によらず一定の大きさで描くため、当たり判定の範囲も
  * 画面上の大きさを基準にワールド座標へ換算する。
+ * 縮小表示や小さいアイテムでは隣のハンドルと判定範囲が重なるため、
+ * 範囲に入ったものの中から中心が最も近いハンドルを選ぶ。
  */
 export function hitTestHandle(
   bounds: Rect,
@@ -78,16 +80,22 @@ export function hitTestHandle(
   scale: number,
 ): ResizeHandle | undefined {
   const half = HANDLE_HIT_SIZE / scale / 2;
+  let nearest: ResizeHandle | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
   for (const handle of RESIZE_HANDLES) {
     const center = handlePosition(bounds, handle);
-    if (
-      Math.abs(point.x - center.x) <= half &&
-      Math.abs(point.y - center.y) <= half
-    ) {
-      return handle;
+    const dx = Math.abs(point.x - center.x);
+    const dy = Math.abs(point.y - center.y);
+    if (dx > half || dy > half) {
+      continue;
+    }
+    const distance = dx * dx + dy * dy;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = handle;
     }
   }
-  return undefined;
+  return nearest;
 }
 
 export interface ResizeOptions {

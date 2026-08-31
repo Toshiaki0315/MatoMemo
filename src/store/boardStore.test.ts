@@ -528,17 +528,26 @@ describe("ファイルの状態", () => {
     expect(store.getState().isDirty()).toBe(false);
   });
 
+  it("何も消さない・差し替えない操作では未保存にならない", () => {
+    const store = setup();
+    const item = createStickyNote({ id: "missing", x: 0, y: 0 });
+    store.getState().removeConnector("missing");
+    store.getState().replaceItem(item);
+    expect(store.getState().isDirty()).toBe(false);
+    expect(store.getState().past).toHaveLength(0);
+  });
+
   it("保存すると未保存でなくなる", () => {
     const store = setup();
     addSticky(store, 0, 0);
-    store.getState().markSaved("/tmp/a.matomemo");
+    store.getState().markSaved("/tmp/a.matomemo", store.getState().board);
     expect(store.getState().isDirty()).toBe(false);
     expect(store.getState().filePath).toBe("/tmp/a.matomemo");
   });
 
   it("保存後に変更すると再び未保存になる", () => {
     const store = setup();
-    store.getState().markSaved("/tmp/a.matomemo");
+    store.getState().markSaved("/tmp/a.matomemo", store.getState().board);
     addSticky(store, 0, 0);
     expect(store.getState().isDirty()).toBe(true);
   });
@@ -601,7 +610,7 @@ describe("newBoard", () => {
 
   it("保存先を忘れ、未保存でない状態にする", () => {
     const store = setup();
-    store.getState().markSaved("/tmp/a.matomemo");
+    store.getState().markSaved("/tmp/a.matomemo", store.getState().board);
     store.getState().newBoard();
     expect(store.getState().filePath).toBeNull();
     expect(store.getState().isDirty()).toBe(false);
@@ -838,13 +847,34 @@ describe("履歴のまとめ (ドラッグ)", () => {
     expect(store.getState().past).toBe(before);
   });
 
-  it("まとめの開始はやり直しを打ち切る", () => {
+  it("まとめの中で変更するとやり直しを打ち切る", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().moveSelected(10, 0);
+    store.getState().undo();
+    expect(store.getState().canRedo()).toBe(true);
+
+    store.getState().beginHistoryGroup();
+    store.getState().moveSelected(5, 0);
+    store.getState().endHistoryGroup();
+
+    expect(store.getState().canRedo()).toBe(false);
+  });
+
+  it("何も変わらなかったまとめはやり直しを消さない", () => {
+    // クリック（掴んで動かさず離す）でもまとめは開始・終了される。
+    // それだけでやり直しが失われてはいけない。
     const store = setup();
     addSticky(store, 0, 0);
     store.getState().undo();
     expect(store.getState().canRedo()).toBe(true);
+
     store.getState().beginHistoryGroup();
-    expect(store.getState().canRedo()).toBe(false);
+    store.getState().endHistoryGroup();
+
+    expect(store.getState().canRedo()).toBe(true);
+    store.getState().redo();
+    expect(store.getState().board.items).toHaveLength(1);
   });
 });
 
@@ -920,6 +950,70 @@ describe("コネクタの矢印", () => {
     store.getState().undo();
     expect(store.getState().board.connectors[0]?.endCap).toBe("none");
   });
+
+  it("丸が付いた端を切り替えると矢印になる", () => {
+    // 「切り替え = 何か付いていれば外す」にすると、丸を黙って消してしまう
+    const { store, a, b } = setupConnected();
+    const id = store
+      .getState()
+      .connectItems(a, b, "straight", { end: "circle" }) as string;
+    store.getState().toggleConnectorArrow(id, "to");
+    expect(store.getState().board.connectors[0]?.endCap).toBe("arrow");
+    store.getState().toggleConnectorArrow(id, "to");
+    expect(store.getState().board.connectors[0]?.endCap).toBe("none");
+  });
+
+  it("存在しないコネクタの切り替えでは何も変わらない", () => {
+    const { store } = setupConnected();
+    const before = store.getState().board;
+    store.getState().toggleConnectorArrow("missing", "to");
+    expect(store.getState().board).toBe(before);
+  });
+});
+
+describe("コネクタの折れ位置", () => {
+  function setupPolyline() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 200);
+    const id = store.getState().connectItems(a, b, "polyline") as string;
+    return { store, id };
+  }
+
+  it("折れる位置を変えられる", () => {
+    const { store, id } = setupPolyline();
+    store.getState().bendConnector(id, 0.25);
+    expect(store.getState().board.connectors[0]?.bend).toBe(0.25);
+  });
+
+  it("範囲外の値は有効な範囲に丸める", () => {
+    const { store, id } = setupPolyline();
+    store.getState().bendConnector(id, 5);
+    const bend = store.getState().board.connectors[0]?.bend ?? 0;
+    expect(bend).toBeLessThan(1);
+    expect(bend).toBeGreaterThan(0.9);
+  });
+
+  it("同じ位置なら何も変わらない", () => {
+    const { store, id } = setupPolyline();
+    const before = store.getState().board;
+    store.getState().bendConnector(id, 0.5);
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("存在しないコネクタでは何も変わらない", () => {
+    const { store } = setupPolyline();
+    const before = store.getState().board;
+    store.getState().bendConnector("missing", 0.25);
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("変更は取り消せる", () => {
+    const { store, id } = setupPolyline();
+    store.getState().bendConnector(id, 0.25);
+    store.getState().undo();
+    expect(store.getState().board.connectors[0]?.bend).toBe(0.5);
+  });
 });
 
 describe("コネクタの選択", () => {
@@ -983,6 +1077,24 @@ describe("コネクタの選択", () => {
     const { store, id } = setupConnected();
     store.getState().selectConnector(id);
     store.getState().newBoard();
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+
+  it("取り消しでコネクタが消えたら選択も外れる", () => {
+    // 選択だけが残ると、Delete キーが消えたコネクタに空振りして
+    // アイテムの削除が効かなくなる
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().undo();
+    expect(store.getState().board.connectors).toEqual([]);
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+
+  it("やり直しでコネクタが戻っても選択は復活しない", () => {
+    const { store, id } = setupConnected();
+    store.getState().selectConnector(id);
+    store.getState().undo();
+    store.getState().redo();
     expect(store.getState().selectedConnectorId).toBeNull();
   });
 });

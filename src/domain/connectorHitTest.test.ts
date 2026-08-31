@@ -7,6 +7,7 @@ import {
   connectorPolyline,
   distanceToSegment,
   hitTestConnector,
+  hitTestConnectorBend,
   hitTestConnectorEnd,
 } from "./connectorHitTest";
 import type { ConnectorKind } from "./board";
@@ -223,5 +224,84 @@ describe("hitTestConnectorEnd", () => {
     expect(hitTestConnectorEnd(curved, id, { x: 100, y: 50 }, 1)).toMatchObject({
       end: "from",
     });
+  });
+});
+
+describe("hitTestConnectorBend", () => {
+  /** 縦にもずれた 2 枚を折れ線で結んだボード。中間の線は x:200, y:50〜250。 */
+  function bendableBoard(kind: ConnectorKind = "polyline") {
+    let board = createBoard({ id: "b" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 300, y: 200, width: 100, height: 100 }),
+    );
+    return addConnector(
+      board,
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "b", kind }),
+    );
+  }
+
+  it("中間の線の上なら掴める", () => {
+    expect(
+      hitTestConnectorBend(bendableBoard(), "c1", { x: 200, y: 150 }, 1),
+    ).toEqual({ id: "c1", verticalSegment: true });
+  });
+
+  it("許容距離より遠ければ掴めない", () => {
+    expect(
+      hitTestConnectorBend(bendableBoard(), "c1", { x: 220, y: 150 }, 1),
+    ).toBeNull();
+  });
+
+  it("縦並びでは水平な中間の線として掴める", () => {
+    // a (0,0) と b (200,300)。中間の線は y:200, x:50〜250。
+    let board = createBoard({ id: "b" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 200, y: 300, width: 100, height: 100 }),
+    );
+    board = addConnector(
+      board,
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        kind: "polyline",
+      }),
+    );
+    expect(hitTestConnectorBend(board, "c1", { x: 150, y: 200 }, 1)).toEqual({
+      id: "c1",
+      verticalSegment: false,
+    });
+  });
+
+  it("折れ線以外のコネクタでは掴めない", () => {
+    expect(
+      hitTestConnectorBend(bendableBoard("straight"), "c1", { x: 200, y: 150 }, 1),
+    ).toBeNull();
+  });
+
+  it("コネクタを指定しなければ掴めない", () => {
+    expect(
+      hitTestConnectorBend(bendableBoard(), undefined, { x: 200, y: 150 }, 1),
+    ).toBeNull();
+  });
+
+  it("縮小表示でも画面上の掴みやすさは変わらない", () => {
+    // scale 0.5 では許容距離がワールド座標で 2 倍になる
+    expect(
+      hitTestConnectorBend(bendableBoard(), "c1", { x: 214, y: 150 }, 0.5),
+    ).not.toBeNull();
+    expect(
+      hitTestConnectorBend(bendableBoard(), "c1", { x: 214, y: 150 }, 1),
+    ).toBeNull();
   });
 });

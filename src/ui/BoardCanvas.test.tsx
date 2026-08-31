@@ -58,6 +58,7 @@ function renderCanvas(options: RenderOptions = {}) {
     onSelectMany: vi.fn(),
     onSelectConnector: vi.fn(),
     onReconnect: vi.fn(),
+    onBendConnector: vi.fn(),
     onMoveSelected: vi.fn(),
     onResizeItem: vi.fn(),
     onDeleteSelected: vi.fn(),
@@ -1309,5 +1310,158 @@ describe("BoardCanvas: 端点のカーソル", () => {
     const { canvas } = renderCanvas({ board: boardWithConnector() });
     fireEvent.pointerMove(canvas, { clientX: 300, clientY: 50 });
     expect(canvas.style.cursor).toBe("grab");
+  });
+});
+
+describe("BoardCanvas: スクロールバー", () => {
+  /** 画面 (800x600) の右外に届くボード。横だけスクロールできる。 */
+  function wideBoard() {
+    return addItem(
+      boardWithSticky(),
+      createStickyNote({ id: "s2", x: 1500, y: 0, width: 100, height: 100 }),
+    );
+  }
+
+  it("内容がすべて見えていれば出さない", () => {
+    renderCanvas({ board: boardWithSticky() });
+    expect(screen.queryByRole("scrollbar")).not.toBeInTheDocument();
+  });
+
+  it("右にはみ出した内容があれば横のバーだけ出す", () => {
+    renderCanvas({ board: wideBoard() });
+    expect(
+      screen.getByRole("scrollbar", { name: "横スクロール" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("scrollbar", { name: "縦スクロール" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("下にはみ出した内容があれば縦のバーを出す", () => {
+    const board = addItem(
+      boardWithSticky(),
+      createStickyNote({ id: "s2", x: 0, y: 1000, width: 100, height: 100 }),
+    );
+    renderCanvas({ board });
+    expect(
+      screen.getByRole("scrollbar", { name: "縦スクロール" }),
+    ).toBeInTheDocument();
+  });
+
+  it("つまみをドラッグするとビューポートが動く", () => {
+    const { onViewportChange } = renderCanvas({ board: wideBoard() });
+    const thumb = screen.getByRole("scrollbar", { name: "横スクロール" });
+
+    fireEvent.pointerDown(thumb, { clientX: 10, clientY: 595 });
+    fireEvent.pointerMove(thumb, { clientX: 110, clientY: 595 });
+
+    // 内容 0〜1600 / 表示幅 800 → トラック 788px・つまみ 394px なので、
+    // 100px の移動は 100 * (800 / 394) ワールド px のスクロールに相当する
+    const viewport = lastViewport(onViewportChange);
+    expect(viewport.x).toBeCloseTo(-100 * (800 / 394), 5);
+    expect(viewport.y).toBe(0);
+    expect(viewport.scale).toBe(1);
+  });
+
+  it("つまみを離すとドラッグが終わる", () => {
+    const { onViewportChange } = renderCanvas({ board: wideBoard() });
+    const thumb = screen.getByRole("scrollbar", { name: "横スクロール" });
+
+    fireEvent.pointerDown(thumb, { clientX: 10, clientY: 595 });
+    fireEvent.pointerUp(thumb, { clientX: 60, clientY: 595 });
+    fireEvent.pointerMove(thumb, { clientX: 110, clientY: 595 });
+
+    expect(onViewportChange).not.toHaveBeenCalled();
+  });
+
+  it("つまみのドラッグはキャンバスの操作を始めない", () => {
+    const { onSelect, onBeginInteraction } = renderCanvas({
+      board: wideBoard(),
+    });
+    const thumb = screen.getByRole("scrollbar", { name: "横スクロール" });
+    fireEvent.pointerDown(thumb, { button: 0, clientX: 10, clientY: 595 });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onBeginInteraction).not.toHaveBeenCalled();
+  });
+});
+
+describe("BoardCanvas: 折れ線の中間の線", () => {
+  /** 縦にもずれた 2 枚を折れ線で結ぶ。中間の線は x:200, y:50〜250。 */
+  function bendableBoard() {
+    let board = createBoard({ id: "b1" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 300, y: 200, width: 100, height: 100 }),
+    );
+    return addConnector(
+      board,
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        kind: "polyline",
+      }),
+    );
+  }
+
+  it("選択中の折れ線の中間の線をドラッグすると折れる位置が変わる", () => {
+    const { canvas, onBendConnector, onBeginInteraction, onEndInteraction } =
+      renderCanvas({ board: bendableBoard(), selectedConnectorId: "c1" });
+
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 150 });
+    expect(onBeginInteraction).toHaveBeenCalled();
+
+    // 始点 x:100〜終点 x:300 の間で x:150 は 1/4 の位置
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(onBendConnector).toHaveBeenCalledWith("c1", 0.25);
+
+    fireEvent.pointerUp(window);
+    expect(onEndInteraction).toHaveBeenCalled();
+  });
+
+  it("選択していない折れ線の中間の線は掴めない", () => {
+    const { canvas, onBendConnector } = renderCanvas({
+      board: bendableBoard(),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 150 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(onBendConnector).not.toHaveBeenCalled();
+  });
+
+  it("中間の線の上ではカーソルが左右の矢印になる", () => {
+    const { canvas } = renderCanvas({
+      board: bendableBoard(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerMove(canvas, { clientX: 200, clientY: 150 });
+    expect(canvas.style.cursor).toBe("ew-resize");
+  });
+
+  it("縦並びでは上下の矢印になる", () => {
+    let board = createBoard({ id: "b1" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 200, y: 300, width: 100, height: 100 }),
+    );
+    board = addConnector(
+      board,
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        kind: "polyline",
+      }),
+    );
+    const { canvas } = renderCanvas({ board, selectedConnectorId: "c1" });
+    fireEvent.pointerMove(canvas, { clientX: 150, clientY: 200 });
+    expect(canvas.style.cursor).toBe("ns-resize");
   });
 });

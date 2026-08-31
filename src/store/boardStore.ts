@@ -11,6 +11,7 @@
 
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import {
+  clampBend,
   createBoard,
   createConnector,
   type Board,
@@ -85,8 +86,12 @@ export interface BoardState {
   renameBoard(name: string): void;
   /** 読み込んだボードで置き換える。 */
   openBoard(board: Board, filePath: string): void;
-  /** 保存が完了したことを記録する。 */
-  markSaved(filePath: string): void;
+  /**
+   * 保存が完了したことを記録する。
+   * @param board 実際にファイルへ書き込んだボード。保存の完了を待つ間に
+   *   編集が進んでいることがあるため、「今のボード」ではなくこれを保存済みとする。
+   */
+  markSaved(filePath: string, board: Board): void;
   /** 新しい空のボードにする。 */
   newBoard(): void;
 
@@ -119,12 +124,14 @@ export interface BoardState {
     caps?: { readonly start?: EndCap; readonly end?: EndCap },
   ): ConnectorId | null;
   /**
-   * 既存のコネクタの指定した端の印を切り替える。
-   * 何も付いていなければ矢印にし、付いていれば外す。
+   * 既存のコネクタの指定した端の矢印を切り替える。
+   * 矢印でなければ矢印にし、矢印なら外す。丸など他の印は矢印に置き換わる。
    */
   toggleConnectorArrow(id: ConnectorId, end: "from" | "to"): void;
   /** コネクタの設定を差し替える。 */
   replaceConnector(connector: Connector): void;
+  /** 折れ線コネクタの中間の線の位置（始点側 0〜終点側 1）を変える。 */
+  bendConnector(id: ConnectorId, bend: number): void;
   /** コネクタの接続先を付け替える。 */
   reconnect(id: ConnectorId, end: "from" | "to", itemId: ItemId): void;
   removeConnector(id: ConnectorId): void;
@@ -182,6 +189,17 @@ function pruneSelection(
   const alive = new Set(board.items.map((item) => item.id));
   const next = new Set([...selectedIds].filter((id) => alive.has(id)));
   return next.size === selectedIds.size ? selectedIds : next;
+}
+
+/** 今のボードに存在しないコネクタの選択を外す。 */
+function pruneConnectorSelection(
+  id: ConnectorId | null,
+  board: Board,
+): ConnectorId | null {
+  if (id === null) {
+    return null;
+  }
+  return board.connectors.some((connector) => connector.id === id) ? id : null;
 }
 
 export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
@@ -257,6 +275,10 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
             past: state.past.slice(0, -1),
             future: [state.board, ...state.future],
             selectedIds: pruneSelection(state.selectedIds, previous),
+            selectedConnectorId: pruneConnectorSelection(
+              state.selectedConnectorId,
+              previous,
+            ),
           };
         });
       },
@@ -272,6 +294,10 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
             past: [...state.past, state.board].slice(-HISTORY_LIMIT),
             future: state.future.slice(1),
             selectedIds: pruneSelection(state.selectedIds, next),
+            selectedConnectorId: pruneConnectorSelection(
+              state.selectedConnectorId,
+              next,
+            ),
           };
         });
       },
@@ -281,10 +307,12 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
           if (state.grouping) {
             return state;
           }
+          // やり直し (future) はここでは消さない。実際に変更が起きれば
+          // `withBoard` が消す。クリックしただけ（何も変わらない）の操作で
+          // やり直しが失われないようにするため。
           return {
             grouping: true,
             past: [...state.past, state.board].slice(-HISTORY_LIMIT),
-            future: [],
           };
         });
       },
@@ -311,8 +339,8 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         replaceBoard(board, filePath);
       },
 
-      markSaved(filePath) {
-        set((state) => ({ savedBoard: state.board, filePath }));
+      markSaved(filePath, board) {
+        set({ savedBoard: board, filePath });
       },
 
       newBoard() {
@@ -426,14 +454,37 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       },
 
       replaceConnector(connector) {
-        set((state) =>
-          withBoard(state, {
+        set((state) => {
+          const index = state.board.connectors.findIndex(
+            (existing) => existing.id === connector.id,
+          );
+          // 対象が無い・同じ内容のときはボードの参照を変えない。
+          // 変えてしまうと未保存扱いになり、履歴にも無駄が積まれる。
+          if (index === -1 || state.board.connectors[index] === connector) {
+            return state;
+          }
+          const connectors = [...state.board.connectors];
+          connectors[index] = connector;
+          return withBoard(state, { ...state.board, connectors });
+        });
+      },
+
+      bendConnector(id, bend) {
+        set((state) => {
+          const target = state.board.connectors.find(
+            (connector) => connector.id === id,
+          );
+          const next = clampBend(bend);
+          if (target === undefined || target.bend === next) {
+            return state;
+          }
+          return withBoard(state, {
             ...state.board,
-            connectors: state.board.connectors.map((existing) =>
-              existing.id === connector.id ? connector : existing,
+            connectors: state.board.connectors.map((connector) =>
+              connector.id === id ? { ...connector, bend: next } : connector,
             ),
-          }),
-        );
+          });
+        });
       },
 
       reconnect(id, end, itemId) {
@@ -486,19 +537,28 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
 
       toggleConnectorArrow(id, end) {
         set((state) => {
-          const connectors = state.board.connectors.map((connector) => {
-            if (connector.id !== id) {
-              return connector;
-            }
-            const toggled: EndCap =
-              (end === "from" ? connector.startCap : connector.endCap) === "none"
-                ? "arrow"
-                : "none";
-            return end === "from"
-              ? { ...connector, startCap: toggled }
-              : { ...connector, endCap: toggled };
+          const target = state.board.connectors.find(
+            (connector) => connector.id === id,
+          );
+          if (target === undefined) {
+            return state;
+          }
+          // 「矢印かどうか」で切り替える。丸など他の印は矢印に置き換える。
+          // 「何か付いているか」で判定すると、丸を外すだけの操作になってしまう。
+          const toggled: EndCap =
+            (end === "from" ? target.startCap : target.endCap) === "arrow"
+              ? "none"
+              : "arrow";
+          const next =
+            end === "from"
+              ? { ...target, startCap: toggled }
+              : { ...target, endCap: toggled };
+          return withBoard(state, {
+            ...state.board,
+            connectors: state.board.connectors.map((connector) =>
+              connector.id === id ? next : connector,
+            ),
           });
-          return withBoard(state, { ...state.board, connectors });
         });
       },
 

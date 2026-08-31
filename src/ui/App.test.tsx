@@ -926,6 +926,27 @@ describe("App: 元に戻す / やり直す", () => {
     expect(store.getState().board.items).toHaveLength(1);
   });
 
+  it("テキスト編集中の ⌘Z はボードを戻さない", () => {
+    // 入力欄の中の取り消しは入力欄自身に任せる。ボード全体を戻すと、
+    // 編集の途中でアイテムごと消えることがある。
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const item = store.getState().board.items[0];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + (item?.width ?? 0) / 2,
+      clientY: (item?.y ?? 0) + (item?.height ?? 0) / 2,
+    });
+    fireEvent.change(screen.getByLabelText("アイテムのテキスト"), {
+      target: { value: "メモ" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("アイテムのテキスト"), {
+      key: "z",
+      metaKey: true,
+    });
+    expect(store.getState().board.items[0]).toMatchObject({ text: "メモ" });
+    expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
+  });
+
   it("ドラッグ移動は 1 回の操作としてまとめて戻る", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));

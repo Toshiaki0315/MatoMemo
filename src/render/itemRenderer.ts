@@ -140,10 +140,14 @@ function drawText(
   ctx.textBaseline = "top";
 
   const lineHeight = item.fontSize * LINE_HEIGHT_RATIO;
+  // 枠に収まる行数だけ描く。枠の外まで描くと、見えているのに当たり判定が
+  // 効かない（クリックしても選択できない）文字ができてしまう。
+  const maxLines = Math.max(1, Math.floor(item.height / lineHeight));
   const lines = wrapText(
     item.text,
     item.width,
     (text) => ctx.measureText(text).width,
+    maxLines,
   );
   const x = horizontalAnchor(item, item.align, 0);
   const top = verticalStart(item, item.verticalAlign, lines.length, lineHeight, 0);

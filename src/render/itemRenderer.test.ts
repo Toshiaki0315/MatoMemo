@@ -136,10 +136,31 @@ describe("drawItem: テキスト", () => {
 
   it("複数行に折り返して描く", () => {
     const mock = createMockContext();
-    drawItem(mock.ctx, createText({ id: "t", x: 0, y: 0, text: "一行目\n二行目" }));
+    drawItem(
+      mock.ctx,
+      createText({ id: "t", x: 0, y: 0, height: 100, text: "一行目\n二行目" }),
+    );
     expect(mock.callsOf("fillText").map((call) => call.args[0])).toEqual([
       "一行目",
       "二行目",
+    ]);
+  });
+
+  it("枠に収まらない行は描かない", () => {
+    // 枠の外に描くと、見えているのに当たり判定が無い文字ができてしまう
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createText({
+        id: "t",
+        x: 0,
+        y: 0,
+        height: 48,
+        text: "一行目\n二行目\n三行目",
+      }),
+    );
+    expect(mock.callsOf("fillText").map((call) => call.args[0])).toEqual([
+      "一行目",
     ]);
   });
 });

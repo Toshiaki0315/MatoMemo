@@ -236,6 +236,7 @@ describe("createConnector", () => {
         capSize: "medium",
         strokeWidth: 2,
         strokeStyle: "solid",
+        bend: 0.5,
       },
     );
   });
