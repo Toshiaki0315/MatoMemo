@@ -5,6 +5,7 @@
 import {
   arrowDepth,
   arrowHead,
+  bendSegment,
   capLength,
   connectorEnds,
   trimPath,
@@ -204,13 +205,12 @@ export function drawConnectorHandles(
 
 /** 折れ線の中間の線の真ん中。折れ線以外（直線・曲線）は null。 */
 function bendHandlePosition(path: ConnectorPath): Point | null {
-  if (path.kind !== "polyline" || path.points.length < 4) {
+  const segment = bendSegment(path);
+  if (segment === null) {
     return null;
   }
-  const a = path.points[1];
-  const b = path.points[2];
-  if (a === undefined || b === undefined) {
-    return null;
-  }
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  return {
+    x: (segment.a.x + segment.b.x) / 2,
+    y: (segment.a.y + segment.b.y) / 2,
+  };
 }

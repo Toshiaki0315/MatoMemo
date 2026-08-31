@@ -947,6 +947,23 @@ describe("App: 元に戻す / やり直す", () => {
     expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
   });
 
+  it("テキスト編集中の ⌘N は新規作成しない", () => {
+    // 文字を打っている最中の誤爆で、書きかけのボードを失わせない
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    const item = store.getState().board.items[0];
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + (item?.width ?? 0) / 2,
+      clientY: (item?.y ?? 0) + (item?.height ?? 0) / 2,
+    });
+    const editor = screen.getByLabelText("アイテムのテキスト");
+    fireEvent.change(editor, { target: { value: "メモ" } });
+    fireEvent.keyDown(editor, { key: "n", metaKey: true });
+
+    expect(store.getState().board.items).toHaveLength(1);
+    expect(screen.getByLabelText("アイテムのテキスト")).toBeInTheDocument();
+  });
+
   it("ドラッグ移動は 1 回の操作としてまとめて戻る", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));

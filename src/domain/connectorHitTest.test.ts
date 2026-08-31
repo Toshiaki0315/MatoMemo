@@ -283,6 +283,19 @@ describe("hitTestConnectorBend", () => {
     });
   });
 
+  it("繋がり先のアイテムが欠けていれば掴めない", () => {
+    // 通常はアイテムを消すとコネクタも消えるが、壊れたファイルなどで
+    // 片方だけが残っていても落ちないようにする
+    const board = bendableBoard();
+    const broken = {
+      ...board,
+      items: board.items.filter((item) => item.id !== "b"),
+    };
+    expect(
+      hitTestConnectorBend(broken, "c1", { x: 200, y: 150 }, 1),
+    ).toBeNull();
+  });
+
   it("折れ線以外のコネクタでは掴めない", () => {
     expect(
       hitTestConnectorBend(bendableBoard("straight"), "c1", { x: 200, y: 150 }, 1),

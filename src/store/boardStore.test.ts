@@ -1184,6 +1184,47 @@ describe("コネクタの更新が他に影響しないこと", () => {
     ).toBe(before);
   });
 
+  it("replaceConnector は無い線を指定してもボードの参照を変えない", () => {
+    const { store } = setupTwoConnectors();
+    const before = store.getState().board;
+    const target = before.connectors[0];
+    if (target === undefined) {
+      throw new Error("対象のコネクタが見つかりません");
+    }
+    store.getState().replaceConnector({ ...target, id: "missing" });
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("replaceConnector は同じ線を渡してもボードの参照を変えない", () => {
+    // 未保存扱いになったり、履歴に無駄が積まれたりしないこと
+    const { store } = setupTwoConnectors();
+    const before = store.getState().board;
+    const target = before.connectors[0];
+    if (target === undefined) {
+      throw new Error("対象のコネクタが見つかりません");
+    }
+    store.getState().replaceConnector(target);
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("bendConnector は他の線を変えない", () => {
+    const { store, first, second } = setupTwoConnectors();
+    const before = store
+      .getState()
+      .board.connectors.find((connector) => connector.id === second);
+    store.getState().bendConnector(first, 0.25);
+    expect(
+      store
+        .getState()
+        .board.connectors.find((connector) => connector.id === first),
+    ).toMatchObject({ bend: 0.25 });
+    expect(
+      store
+        .getState()
+        .board.connectors.find((connector) => connector.id === second),
+    ).toBe(before);
+  });
+
   it("reconnect は他の線を変えない", () => {
     const { store, c, first, second } = setupTwoConnectors();
     const before = store

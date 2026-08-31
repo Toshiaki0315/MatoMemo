@@ -5,7 +5,7 @@
  * 曲線もベジェを細かく分割した折れ線として同じ計算で扱う。
  */
 
-import { connectorEnds, connectorPath } from "./connectorPath";
+import { bendSegment, connectorEnds, connectorPath } from "./connectorPath";
 import type { Board, Connector, ConnectorId, Item } from "./board";
 import type { Point } from "./geometry";
 
@@ -185,8 +185,8 @@ export interface GrabbedConnectorBend {
 /**
  * 指定した折れ線コネクタの中間の線を掴んだかを判定する。
  *
- * 中間の線をドラッグすると折れる位置を変えられる。対象は選択中の
- * 折れ線コネクタだけで、直線・曲線には中間の線が無い。
+ * 中間の線をドラッグすると折れる位置を変えられる。中間の線を持つのは
+ * 折れ線だけなので、直線・曲線は経路を求めた時点で対象外になる。
  * @param scale 表示倍率。掴める距離は画面上で一定にしたいので換算する
  */
 export function hitTestConnectorBend(
@@ -201,7 +201,7 @@ export function hitTestConnectorBend(
   const connector = board.connectors.find(
     (candidate) => candidate.id === connectorId,
   );
-  if (connector === undefined || connector.kind !== "polyline") {
+  if (connector === undefined) {
     return null;
   }
   const byId = new Map(board.items.map((item) => [item.id, item]));
@@ -212,16 +212,13 @@ export function hitTestConnectorBend(
   }
 
   const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
-  if (path.kind !== "polyline") {
-    return null;
-  }
-  const [, a, b] = path.points;
-  if (a === undefined || b === undefined) {
+  const segment = bendSegment(path);
+  if (segment === null) {
     return null;
   }
   const tolerance = CONNECTOR_HIT_TOLERANCE / scale;
-  if (distanceToSegment(point, a, b) > tolerance) {
+  if (distanceToSegment(point, segment.a, segment.b) > tolerance) {
     return null;
   }
-  return { id: connector.id, verticalSegment: a.x === b.x };
+  return { id: connector.id, verticalSegment: segment.a.x === segment.b.x };
 }

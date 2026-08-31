@@ -6,6 +6,7 @@ import {
   createConnector,
   createImage,
   createStickyNote,
+  type Board,
 } from "../domain/board";
 import { addConnector, addItem, moveItems } from "../domain/boardOps";
 import {
@@ -68,23 +69,27 @@ function renderCanvas(options: RenderOptions = {}) {
     onBeginInteraction: vi.fn(),
     onEndInteraction: vi.fn(),
   };
+  const props = {
+    viewport: options.viewport ?? createViewport(),
+    selectedIds: options.selectedIds ?? new Set<string>(),
+    connectMode: options.connectMode ?? false,
+    ...(options.selectedConnectorId !== undefined
+      ? { selectedConnectorId: options.selectedConnectorId }
+      : {}),
+    ...(options.connectingFrom !== undefined
+      ? { connectingFrom: options.connectingFrom }
+      : {}),
+    ...handlers,
+  };
   const view = render(
-    <BoardCanvas
-      board={options.board ?? createBoard({ id: "b1" })}
-      viewport={options.viewport ?? createViewport()}
-      selectedIds={options.selectedIds ?? new Set()}
-      connectMode={options.connectMode ?? false}
-      {...(options.selectedConnectorId !== undefined
-        ? { selectedConnectorId: options.selectedConnectorId }
-        : {})}
-      {...(options.connectingFrom !== undefined
-        ? { connectingFrom: options.connectingFrom }
-        : {})}
-      {...handlers}
-    />,
+    <BoardCanvas board={options.board ?? createBoard({ id: "b1" })} {...props} />,
   );
   const canvas = screen.getByTestId("board-canvas") as HTMLCanvasElement;
-  return { canvas, view, ...handlers };
+  /** ドラッグの途中でボードが変わる状況を作る。 */
+  const setBoard = (board: Board) => {
+    view.rerender(<BoardCanvas board={board} {...props} />);
+  };
+  return { canvas, view, setBoard, ...handlers };
 }
 
 /** Space を押した状態にする（この間のドラッグはパンになる）。 */
@@ -1363,6 +1368,23 @@ describe("BoardCanvas: スクロールバー", () => {
     expect(viewport.scale).toBe(1);
   });
 
+  it("縦のつまみをドラッグすると上下に動く", () => {
+    const board = addItem(
+      boardWithSticky(),
+      createStickyNote({ id: "s2", x: 0, y: 1000, width: 100, height: 100 }),
+    );
+    const { onViewportChange } = renderCanvas({ board });
+    const thumb = screen.getByRole("scrollbar", { name: "縦スクロール" });
+
+    fireEvent.pointerDown(thumb, { clientX: 795, clientY: 10 });
+    fireEvent.pointerMove(thumb, { clientX: 795, clientY: 110 });
+
+    // 内容 0〜1100 / 表示高 600 → トラック 588px・つまみ 320.7px
+    const viewport = lastViewport(onViewportChange);
+    expect(viewport.y).toBeCloseTo(-100 * (500 / (588 - (600 / 1100) * 588)), 5);
+    expect(viewport.x).toBe(0);
+  });
+
   it("つまみを離すとドラッグが終わる", () => {
     const { onViewportChange } = renderCanvas({ board: wideBoard() });
     const thumb = screen.getByRole("scrollbar", { name: "横スクロール" });
@@ -1421,6 +1443,37 @@ describe("BoardCanvas: 折れ線の中間の線", () => {
 
     fireEvent.pointerUp(window);
     expect(onEndInteraction).toHaveBeenCalled();
+  });
+
+  it("ドラッグの途中で線が消えても落ちない", () => {
+    const board = bendableBoard();
+    const { canvas, setBoard, onBendConnector } = renderCanvas({
+      board,
+      selectedConnectorId: "c1",
+    });
+
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 150 });
+    setBoard({ ...board, connectors: [] });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+
+    expect(onBendConnector).not.toHaveBeenCalled();
+  });
+
+  it("ドラッグの途中で繋がり先のアイテムが消えても落ちない", () => {
+    const board = bendableBoard();
+    const { canvas, setBoard, onBendConnector } = renderCanvas({
+      board,
+      selectedConnectorId: "c1",
+    });
+
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 200, clientY: 150 });
+    setBoard({
+      ...board,
+      items: board.items.filter((item) => item.id !== "b"),
+    });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+
+    expect(onBendConnector).not.toHaveBeenCalled();
   });
 
   it("選択していない折れ線の中間の線は掴めない", () => {

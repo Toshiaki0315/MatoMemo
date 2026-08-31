@@ -5,6 +5,7 @@ import {
   arrowDepth,
   arrowHead,
   bendForPoint,
+  bendSegment,
   capLength,
   trimPath,
   connectorEnds,
@@ -711,5 +712,50 @@ describe("trimPath", () => {
       throw new Error("curve ではありません");
     }
     expect(trimmed.from).toEqual({ x: 10, y: 0 });
+  });
+});
+
+describe("bendSegment", () => {
+  it("折れ線の中間の線の 2 点を返す", () => {
+    const path = {
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 50, y: 100 },
+        { x: 100, y: 100 },
+      ],
+    } as const;
+    expect(bendSegment(path)).toEqual({
+      a: { x: 50, y: 0 },
+      b: { x: 50, y: 100 },
+    });
+  });
+
+  it("直線 (2 点) には中間の線が無いので null", () => {
+    const path = {
+      kind: "polyline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ],
+    } as const;
+    expect(bendSegment(path)).toBeNull();
+  });
+
+  it("点が 1 つしかなければ null", () => {
+    const path = { kind: "polyline", points: [{ x: 0, y: 0 }] } as const;
+    expect(bendSegment(path)).toBeNull();
+  });
+
+  it("曲線には中間の線が無いので null", () => {
+    const path = {
+      kind: "curve",
+      from: { x: 0, y: 0 },
+      control1: { x: 40, y: 0 },
+      control2: { x: 80, y: 0 },
+      to: { x: 100, y: 0 },
+    } as const;
+    expect(bendSegment(path)).toBeNull();
   });
 });

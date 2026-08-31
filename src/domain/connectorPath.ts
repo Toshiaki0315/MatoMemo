@@ -151,6 +151,29 @@ function polylinePath(from: Rect, to: Rect, bend: number) {
   } as const;
 }
 
+/** 折れ線の中間の線の両端。 */
+export interface BendSegment {
+  readonly a: Point;
+  readonly b: Point;
+}
+
+/**
+ * 折れ線の中間の線（折れる位置を決めている線）を返す。
+ *
+ * 折れ線の経路は 4 点で、そのうち内側の 2 点がこの線にあたる。
+ * 曲線や、折れの無い直線（2 点）には中間の線が無いので null を返す。
+ */
+export function bendSegment(path: ConnectorPath): BendSegment | null {
+  if (path.kind !== "polyline") {
+    return null;
+  }
+  const [a, b] = path.points.slice(1, 3);
+  if (a === undefined || b === undefined) {
+    return null;
+  }
+  return { a, b };
+}
+
 /**
  * ドラッグ先の点から、中間の線の位置（割合）を求める。
  *

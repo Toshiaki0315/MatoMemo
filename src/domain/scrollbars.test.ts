@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createStickyNote } from "./board";
-import { contentBounds, scrollbarModel } from "./scrollbars";
+import {
+  MIN_THUMB_LENGTH,
+  contentBounds,
+  scrollbarModel,
+  thumbLayout,
+} from "./scrollbars";
 
 /** 指定した位置・大きさの付箋。 */
 function sticky(id: string, x: number, y: number, width = 100, height = 100) {
@@ -100,5 +105,45 @@ describe("scrollbarModel", () => {
     );
     expect(model.horizontal?.thumbSize).toBeCloseTo(0.5);
     expect(model.vertical?.thumbSize).toBeCloseTo(0.5);
+  });
+});
+
+describe("thumbLayout", () => {
+  /** 割合だけを指定したトラック。 */
+  function track(thumbSize: number, thumbPosition: number) {
+    return { thumbSize, thumbPosition, scrollableWorld: 1000 };
+  }
+
+  it("つまみの長さと位置をトラック長に対する割合から求める", () => {
+    expect(thumbLayout(track(0.25, 0.5), 400)).toEqual({
+      length: 100,
+      movable: 300,
+      offset: 150,
+    });
+  });
+
+  it("先頭ではつまみを左端に置く", () => {
+    expect(thumbLayout(track(0.5, 0), 400)?.offset).toBe(0);
+  });
+
+  it("末尾ではつまみを動かせる範囲の端まで送る", () => {
+    const layout = thumbLayout(track(0.5, 1), 400);
+    expect(layout?.offset).toBe(layout?.movable);
+  });
+
+  it("割合どおりだと短すぎる場合は掴める最小の長さにする", () => {
+    const layout = thumbLayout(track(0.001, 0), 400);
+    expect(layout?.length).toBe(MIN_THUMB_LENGTH);
+    expect(layout?.movable).toBe(400 - MIN_THUMB_LENGTH);
+  });
+
+  it("トラックが最小の長さ以下なら、つまみを出さない", () => {
+    expect(thumbLayout(track(0.5, 0), MIN_THUMB_LENGTH)).toBeNull();
+  });
+
+  it("内容がすべて見えていて動かす余地が無ければ、つまみを出さない", () => {
+    // scrollbarModel はこの状態では null を返すが、
+    // 0 除算で位置が壊れないようここでも防ぐ
+    expect(thumbLayout(track(1, 0), 400)).toBeNull();
   });
 });

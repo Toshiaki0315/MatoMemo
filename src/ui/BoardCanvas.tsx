@@ -27,7 +27,11 @@ import {
   hitTestHandle,
   type ResizeHandle,
 } from "../domain/resize";
-import { scrollbarModel, type ScrollbarTrack } from "../domain/scrollbars";
+import {
+  scrollbarModel,
+  thumbLayout,
+  type ScrollbarTrack,
+} from "../domain/scrollbars";
 import { panBy, toWorld, zoomAt, type Viewport } from "../domain/viewport";
 import { renderBoard, type CanvasTheme } from "../render/boardRenderer";
 import type { ImageCache } from "../render/itemRenderer";
@@ -41,9 +45,6 @@ const ZOOM_SENSITIVITY = 0.01;
 
 /** スクロールバーの帯の太さ (px)。もう一方のバーと重ならない余白も兼ねる。 */
 const SCROLLBAR_GUTTER = 12;
-
-/** つまみの最小の長さ (px)。短すぎると掴めないため。 */
-const MIN_THUMB_LENGTH = 24;
 
 export interface BoardCanvasProps {
   readonly board: Board;
@@ -678,20 +679,18 @@ export function BoardCanvas({
     y: size.height - SCROLLBAR_GUTTER,
   };
   const horizontalThumb =
-    scrollbars.horizontal === null || trackLengths.x <= MIN_THUMB_LENGTH
+    scrollbars.horizontal === null
       ? null
       : thumbLayout(scrollbars.horizontal, trackLengths.x);
   const verticalThumb =
-    scrollbars.vertical === null || trackLengths.y <= MIN_THUMB_LENGTH
+    scrollbars.vertical === null
       ? null
       : thumbLayout(scrollbars.vertical, trackLengths.y);
 
   const beginScrollDrag =
     (axis: "x" | "y", track: ScrollbarTrack, movable: number) =>
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (movable <= 0) {
-        return;
-      }
+      // movable は thumbLayout が 0 より大きいことを保証している
       event.preventDefault();
       event.stopPropagation();
       // ポインタを捕まえ、つまみの外へ出てもドラッグが続くようにする
@@ -799,24 +798,6 @@ export function BoardCanvas({
       ) : null}
     </>
   );
-}
-
-/**
- * つまみの画面上の寸法 (px)。
- *
- * 掴めるよう最小の長さを確保する。その分だけ割合どおりの位置から
- * ずれるため、位置は「動かせる余白の中の割合」として計算し直す。
- */
-function thumbLayout(
-  track: ScrollbarTrack,
-  trackLength: number,
-): { readonly length: number; readonly movable: number; readonly offset: number } {
-  const length = Math.min(
-    Math.max(track.thumbSize * trackLength, MIN_THUMB_LENGTH),
-    trackLength,
-  );
-  const movable = trackLength - length;
-  return { length, movable, offset: track.thumbPosition * movable };
 }
 
 /** 1 件だけ選択しているアイテムを返す。リサイズの対象。 */

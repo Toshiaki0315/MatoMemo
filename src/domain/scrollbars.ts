@@ -96,3 +96,38 @@ export function scrollbarModel(
     ),
   };
 }
+
+/** つまみの最小の長さ (px)。短すぎると掴めないため。 */
+export const MIN_THUMB_LENGTH = 24;
+
+/** つまみの画面上の寸法 (px)。 */
+export interface ThumbLayout {
+  /** つまみの長さ。 */
+  readonly length: number;
+  /** つまみを動かせる余白。トラック長からつまみの長さを引いたもの。 */
+  readonly movable: number;
+  /** トラックの先頭からつまみまでの距離。 */
+  readonly offset: number;
+}
+
+/**
+ * トラックの長さ (px) からつまみの寸法を求める。
+ *
+ * 動かす余地が無ければ null を返す。掴んだ時点の換算係数を余白で割るため、
+ * 余白 0 のつまみを掴ませると位置が壊れる。
+ * @param trackLength トラックの長さ (px)
+ */
+export function thumbLayout(
+  track: ScrollbarTrack,
+  trackLength: number,
+): ThumbLayout | null {
+  const length = Math.min(
+    Math.max(track.thumbSize * trackLength, MIN_THUMB_LENGTH),
+    trackLength,
+  );
+  const movable = trackLength - length;
+  if (movable <= 0) {
+    return null;
+  }
+  return { length, movable, offset: track.thumbPosition * movable };
+}
