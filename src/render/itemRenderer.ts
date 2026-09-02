@@ -5,6 +5,7 @@
  * ここではワールド座標をそのまま使う。
  */
 
+import { lineEndpoints } from "../domain/board";
 import type { Item, ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
 import type {
   ImageItem,
@@ -45,6 +46,9 @@ export interface DrawItemOptions {
 
 /** 付箋・図形の角の丸み。 */
 const CORNER_RADIUS = 6;
+
+/** 角丸矩形の角の丸み。付箋と区別が付くよう大きめにする。 */
+const ROUNDED_CORNER_RADIUS = 12;
 
 /** アイテム内テキストの余白。 */
 const TEXT_PADDING = 12;
@@ -104,9 +108,17 @@ function drawShape(
   hideText: boolean,
   scale: number,
 ): void {
+  // 直線は領域を持たないので、塗りもテキストも無い
+  if (item.shape === "line") {
+    drawLine(ctx, item, scale);
+    return;
+  }
+
   ctx.beginPath();
   if (item.shape === "circle") {
     traceEllipse(ctx, item);
+  } else if (item.shape === "rounded") {
+    traceRounded(ctx, item);
   } else {
     ctx.rect(item.x, item.y, item.width, item.height);
   }
@@ -124,6 +136,24 @@ function drawShape(
   if (!hideText) {
     drawBoxedText(ctx, item.text, item);
   }
+}
+
+/** 直線図形を描く。外接矩形の対角線として引く。 */
+function drawLine(
+  ctx: CanvasRenderingContext2D,
+  item: ShapeItem,
+  scale: number,
+): void {
+  const { from, to } = lineEndpoints(item);
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.strokeStyle = SHAPE_COLORS.border;
+  ctx.lineWidth = item.strokeWidth / scale;
+  ctx.lineCap = "round";
+  ctx.setLineDash(dashPattern(item.strokeStyle, item.strokeWidth, scale));
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawText(
@@ -259,6 +289,8 @@ export function drawSelectionOutline(
   ctx.beginPath();
   if (item.type === "shape" && item.shape === "circle") {
     traceEllipse(ctx, item);
+  } else if (item.type === "shape" && item.shape === "rounded") {
+    traceRounded(ctx, item);
   } else {
     ctx.rect(item.x, item.y, item.width, item.height);
   }
@@ -300,6 +332,19 @@ export function drawResizeHandles(
     ctx.fill();
     ctx.stroke();
   }
+}
+
+/** 角丸矩形のパスを引く。小さい図形では角の丸みを辺の半分までに抑える。 */
+function traceRounded(
+  ctx: CanvasRenderingContext2D,
+  bounds: { x: number; y: number; width: number; height: number },
+): void {
+  const radius = Math.min(
+    ROUNDED_CORNER_RADIUS,
+    bounds.width / 2,
+    bounds.height / 2,
+  );
+  ctx.roundRect(bounds.x, bounds.y, bounds.width, bounds.height, radius);
 }
 
 /** 外接矩形に内接する楕円のパスを引く。 */

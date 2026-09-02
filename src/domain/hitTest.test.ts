@@ -152,3 +152,47 @@ describe("itemsWithinRect", () => {
     ).toEqual([]);
   });
 });
+
+describe("hitTest: 直線", () => {
+  /** (0,0)-(100,50) の対角線。 */
+  const line = createShape({
+    id: "line",
+    shape: "line",
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 50,
+  });
+
+  it("線分の近くなら当たる", () => {
+    // 対角線の中点 (50, 25) のすぐそば
+    expect(hitTest([line], { x: 50, y: 28 })).toBe(line);
+  });
+
+  it("外接矩形の中でも線分から離れていれば当たらない", () => {
+    // 右上の角は矩形の中だが線からは遠い
+    expect(hitTest([line], { x: 95, y: 5 })).toBeUndefined();
+  });
+
+  it("縮小表示では掴める距離をワールド座標で広げる", () => {
+    const point = { x: 50, y: 40 };
+    expect(hitTest([line], point, 1)).toBeUndefined();
+    expect(hitTest([line], point, 0.5)).toBe(line);
+  });
+
+  it("向きが up なら反対の対角線で判定する", () => {
+    const rising = createShape({
+      id: "rising",
+      shape: "line",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50,
+      lineDirection: "up",
+    });
+    // up の対角線 (左下→右上) は x:25 で y:37.5 を通る
+    expect(hitTest([rising], { x: 25, y: 40 })).toBe(rising);
+    // down の対角線が通る場所 (x:25, y:12.5) は、up では何もない
+    expect(hitTest([rising], { x: 25, y: 12 })).toBeUndefined();
+  });
+});

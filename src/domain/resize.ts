@@ -25,6 +25,12 @@ export const RESIZE_HANDLES: readonly ResizeHandle[] = [
 /** アイテムの最小の辺の長さ。これ以下には縮められない。 */
 export const MIN_ITEM_SIZE = 24;
 
+/**
+ * 直線図形の最小の辺の長さ。
+ * 水平・垂直な線を作れるよう、外接矩形をほぼ潰せるところまで許す。
+ */
+export const LINE_MIN_SIZE = 2;
+
 /** ハンドルの描画サイズ (画面 px)。 */
 export const HANDLE_SIZE = 8;
 
@@ -104,6 +110,8 @@ export interface ResizeOptions {
    * 画像は原寸の比を渡し、常に比を保ってリサイズする。
    */
   readonly aspectRatio?: number;
+  /** 最小の辺の長さ。省略時は `MIN_ITEM_SIZE`。直線は小さくできる。 */
+  readonly minSize?: number;
 }
 
 /**
@@ -150,8 +158,9 @@ export function resizeRect(
     }
   }
 
-  width = Math.max(width, MIN_ITEM_SIZE);
-  height = Math.max(height, MIN_ITEM_SIZE);
+  const minSize = options.minSize ?? MIN_ITEM_SIZE;
+  width = Math.max(width, minSize);
+  height = Math.max(height, minSize);
 
   if (keepsRatio) {
     // 最小サイズで丸めた結果として比が崩れることがあるので合わせ直す。

@@ -95,6 +95,64 @@ describe("drawItem: 図形", () => {
     );
     expect(mock.callsOf("fillText")[0]?.args[0]).toBe("原因");
   });
+
+  it("角丸矩形を描く", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "r", shape: "rounded", x: 0, y: 0, width: 100, height: 60 }),
+    );
+    expect(mock.callsOf("roundRect")[0]?.args).toEqual([0, 0, 100, 60, 12]);
+  });
+
+  it("小さい角丸矩形は角の丸みを辺の半分までに抑える", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "r", shape: "rounded", x: 0, y: 0, width: 100, height: 16 }),
+    );
+    expect(mock.callsOf("roundRect")[0]?.args).toEqual([0, 0, 100, 16, 8]);
+  });
+
+  it("直線を外接矩形の対角線として描く", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "l", shape: "line", x: 10, y: 20, width: 100, height: 50 }),
+    );
+    expect(mock.callsOf("moveTo")[0]?.args).toEqual([10, 20]);
+    expect(mock.callsOf("lineTo")[0]?.args).toEqual([110, 70]);
+    expect(mock.callsOf("stroke")).toHaveLength(1);
+    // 領域が無いので塗らない
+    expect(mock.callsOf("fill")).toHaveLength(0);
+  });
+
+  it("上向きの直線は左下から右上へ描く", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({
+        id: "l",
+        shape: "line",
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 50,
+        lineDirection: "up",
+      }),
+    );
+    expect(mock.callsOf("moveTo")[0]?.args).toEqual([10, 70]);
+    expect(mock.callsOf("lineTo")[0]?.args).toEqual([110, 20]);
+  });
+
+  it("直線はテキストを描かない", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createShape({ id: "l", shape: "line", x: 0, y: 0, text: "無視される" }),
+    );
+    expect(mock.callsOf("fillText")).toHaveLength(0);
+  });
 });
 
 describe("drawItem: テキスト", () => {

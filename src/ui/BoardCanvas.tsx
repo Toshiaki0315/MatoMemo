@@ -358,7 +358,7 @@ export function BoardCanvas({
       const origin = { x: event.clientX, y: event.clientY };
 
       if (connectMode) {
-        const target = hitTest(board.items, world);
+        const target = hitTest(board.items, world, viewport.scale);
         if (target !== undefined) {
           onPickForConnection?.(target.id);
           return;
@@ -427,7 +427,7 @@ export function BoardCanvas({
         return;
       }
 
-      const hit = hitTest(board.items, world);
+      const hit = hitTest(board.items, world, viewport.scale);
       const additive = event.shiftKey || event.metaKey;
 
       if (hit === undefined) {
@@ -495,7 +495,7 @@ export function BoardCanvas({
       if (current.mode.kind === "reconnect") {
         // 運んだ先のアイテムに繋ぎ替える。アイテムの外では何もしない。
         const world = toWorld(viewport, toCanvasPoint(event));
-        const target = hitTest(latest.current.board.items, world);
+        const target = hitTest(latest.current.board.items, world, viewport.scale);
         if (target !== undefined) {
           latest.current.onReconnect?.(
             current.mode.id,
@@ -582,7 +582,7 @@ export function BoardCanvas({
 
       // アイテムを先に見る。線がアイテムに重なっている場合、
       // 見た目の前面にあるアイテムを狙ったと解釈するのが自然なため。
-      const item = hitTest(board.items, world);
+      const item = hitTest(board.items, world, viewport.scale);
       if (item !== undefined) {
         onContextMenu({ kind: "item", id: item.id }, position);
         return;
@@ -611,7 +611,7 @@ export function BoardCanvas({
     const handleDoubleClick = (event: MouseEvent) => {
       const { board, viewport, onActivateItem } = latest.current;
       const world = toWorld(viewport, toCanvasPoint(event));
-      const hit = hitTest(board.items, world);
+      const hit = hitTest(board.items, world, viewport.scale);
       if (hit !== undefined) {
         onActivateItem?.(hit.id);
       }

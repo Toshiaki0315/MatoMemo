@@ -132,6 +132,56 @@ describe("ラウンドトリップ", () => {
       "item-image",
     ]);
   });
+
+  it("角丸矩形と直線も復元する", () => {
+    const board = {
+      ...createBoard({ id: "shapes" }),
+      items: [
+        createShape({ id: "r", shape: "rounded", x: 0, y: 0 }),
+        createShape({
+          id: "l",
+          shape: "line",
+          x: 10,
+          y: 20,
+          lineDirection: "up",
+        }),
+      ],
+    };
+    expect(parseBoardFile(serializeBoard(board))).toEqual(board);
+  });
+});
+
+describe("parseBoardFile: 直線の向き", () => {
+  /** items[0] を直線 1 本にした JSON を作る。 */
+  function withLine(mutate: (line: Record<string, unknown>) => void): string {
+    return boardJson((b) => {
+      const line = JSON.parse(
+        JSON.stringify(createShape({ id: "l", shape: "line", x: 0, y: 0 })),
+      ) as Record<string, unknown>;
+      mutate(line);
+      b["items"] = [line];
+      b["connectors"] = [];
+    });
+  }
+
+  it("向きが無い古いファイルは左上→右下として読む", () => {
+    const board = parseBoardFile(
+      withLine((line) => {
+        delete line["lineDirection"];
+      }),
+    );
+    expect(board.items[0]).toMatchObject({ lineDirection: "down" });
+  });
+
+  it("向きが不正な場合はエラーにする", () => {
+    expect(
+      catchError(
+        withLine((line) => {
+          line["lineDirection"] = "diagonal";
+        }),
+      ).issues,
+    ).toContain('board.items[0].lineDirection が未知の値です: "diagonal"');
+  });
 });
 
 describe("BoardFileError", () => {

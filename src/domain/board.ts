@@ -27,7 +27,12 @@ export const STICKY_COLORS = [
 export type StickyColor = (typeof STICKY_COLORS)[number];
 
 /** 図形の種類。 */
-export type ShapeKind = "rectangle" | "circle";
+export const SHAPE_KINDS = ["rectangle", "rounded", "circle", "line"] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
+
+/** 直線図形の向き。down は左上→右下、up は左下→右上。 */
+export const LINE_DIRECTIONS = ["down", "up"] as const;
+export type LineDirection = (typeof LINE_DIRECTIONS)[number];
 
 /** コネクタの種類。 */
 export type ConnectorKind = "straight" | "polyline" | "curved";
@@ -137,6 +142,8 @@ export interface ShapeItem
   readonly text: string;
   /** 塗りの色。null なら塗らない（背景が透ける）。 */
   readonly fill: string | null;
+  /** 直線の向き。直線 (`shape: "line"`) だけが持ち、省略時は down。 */
+  readonly lineDirection?: LineDirection;
 }
 
 /** 単体のテキスト。 */
@@ -285,6 +292,12 @@ export function createStickyNote(
 /** 図形の既定の塗り色。 */
 export const DEFAULT_SHAPE_FILL = "#FFFFFF";
 
+/** 直線図形の既定の長さ。 */
+const DEFAULT_LINE_LENGTH = 200;
+
+/** 直線図形の既定の高さ。ほぼ水平な線として置かれる。 */
+const DEFAULT_LINE_THICKNESS = 2;
+
 export function createShape(
   params: ItemBaseParams &
     TextStyleParams &
@@ -292,22 +305,50 @@ export function createShape(
       readonly shape: ShapeKind;
       readonly text?: string;
       readonly fill?: string | null;
+      readonly lineDirection?: LineDirection;
     },
 ): ShapeItem {
+  const isLine = params.shape === "line";
   return {
     id: params.id,
     type: "shape",
     shape: params.shape,
     x: params.x,
     y: params.y,
-    width: params.width ?? DEFAULT_SHAPE_SIZE,
-    height: params.height ?? DEFAULT_SHAPE_SIZE,
+    width: params.width ?? (isLine ? DEFAULT_LINE_LENGTH : DEFAULT_SHAPE_SIZE),
+    height:
+      params.height ?? (isLine ? DEFAULT_LINE_THICKNESS : DEFAULT_SHAPE_SIZE),
     text: params.text ?? "",
-    fill: params.fill === undefined ? DEFAULT_SHAPE_FILL : params.fill,
+    // 直線は領域を持たないので塗らない
+    fill:
+      params.fill === undefined
+        ? isLine
+          ? null
+          : DEFAULT_SHAPE_FILL
+        : params.fill,
     strokeWidth: params.strokeWidth ?? DEFAULT_STROKE.strokeWidth,
     strokeStyle: params.strokeStyle ?? DEFAULT_STROKE.strokeStyle,
+    ...(isLine ? { lineDirection: params.lineDirection ?? "down" } : {}),
     ...textSettingsOf(params, BOXED_TEXT_DEFAULTS),
   };
+}
+
+/**
+ * 直線図形の両端（ワールド座標）。
+ *
+ * 直線は自分の外接矩形の対角線として描く。向きが down なら
+ * 左上から右下、up なら左下から右上へ引く。
+ */
+export function lineEndpoints(item: ShapeItem): {
+  readonly from: { readonly x: number; readonly y: number };
+  readonly to: { readonly x: number; readonly y: number };
+} {
+  const right = item.x + item.width;
+  const bottom = item.y + item.height;
+  if (item.lineDirection === "up") {
+    return { from: { x: item.x, y: bottom }, to: { x: right, y: item.y } };
+  }
+  return { from: { x: item.x, y: item.y }, to: { x: right, y: bottom } };
 }
 
 export function createText(

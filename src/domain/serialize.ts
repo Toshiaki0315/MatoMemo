@@ -18,6 +18,8 @@ import {
   DEFAULT_STROKE,
   CAP_SIZES,
   END_CAPS,
+  LINE_DIRECTIONS,
+  SHAPE_KINDS,
   STANDALONE_TEXT_DEFAULTS,
   STICKY_COLORS,
   STROKE_STYLES,
@@ -27,6 +29,7 @@ import {
   type Connector,
   type ConnectorKind,
   type Item,
+  type LineDirection,
   type ShapeKind,
   type CapSize,
   type EndCap,
@@ -45,7 +48,6 @@ export const SCHEMA_VERSION = 1;
 /** 保存ファイルの拡張子。 */
 export const BOARD_FILE_EXTENSION = "matomemo";
 
-const SHAPE_KINDS: readonly ShapeKind[] = ["rectangle", "circle"];
 const CONNECTOR_KINDS: readonly ConnectorKind[] = [
   "straight",
   "polyline",
@@ -282,6 +284,22 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
           issues,
         ),
         text: readString(raw, "text", path, issues),
+        // 直線の向きは直線だけが持つ。無ければ左上→右下とする。
+        ...(raw["shape"] === "line"
+          ? {
+              lineDirection:
+                raw["lineDirection"] === undefined
+                  ? ("down" as LineDirection)
+                  : readEnum<LineDirection>(
+                      raw,
+                      "lineDirection",
+                      LINE_DIRECTIONS,
+                      "down",
+                      path,
+                      issues,
+                    ),
+            }
+          : {}),
       };
     case "text":
       return {

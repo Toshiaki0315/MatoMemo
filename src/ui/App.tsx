@@ -76,11 +76,13 @@ export interface AppProps {
 /** 未保存の変更を捨てる確認が要る操作。 */
 type PendingAction = "new" | "open" | "close";
 
-/** テキストを内包できるアイテムか。 */
+/** テキストを内包できるアイテムか。直線は領域を持たないので除く。 */
 function isTextEditable(item: Item | undefined): item is TextEditableItem {
   return (
     item !== undefined &&
-    (item.type === "sticky" || item.type === "shape" || item.type === "text")
+    (item.type === "sticky" ||
+      (item.type === "shape" && item.shape !== "line") ||
+      item.type === "text")
   );
 }
 
@@ -761,6 +763,23 @@ export function App({
                         {
                           label: "縦に等間隔",
                           onSelect: () => distributeSelected("vertical"),
+                        },
+                      ]
+                    : []),
+                  // 直線は対角線として描くため、向きの反転だけメニューで行う
+                  ...(soleSelected?.type === "shape" &&
+                  soleSelected.shape === "line"
+                    ? [
+                        {
+                          label: "線の向きを反転",
+                          onSelect: () =>
+                            replaceItem({
+                              ...soleSelected,
+                              lineDirection:
+                                soleSelected.lineDirection === "up"
+                                  ? "down"
+                                  : "up",
+                            }),
                         },
                       ]
                     : []),

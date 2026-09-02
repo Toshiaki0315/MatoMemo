@@ -80,6 +80,15 @@ describe("itemLabel", () => {
     ).toBe("（円）");
   });
 
+  it("角丸矩形と直線も種類を示す", () => {
+    expect(
+      itemLabel(createShape({ id: "r", shape: "rounded", x: 0, y: 0 })),
+    ).toBe("（角丸矩形）");
+    expect(itemLabel(createShape({ id: "l", shape: "line", x: 0, y: 0 }))).toBe(
+      "（直線）",
+    );
+  });
+
   it("テキストがあれば図形でも種類は出さない", () => {
     expect(
       itemLabel(createShape({ id: "c", shape: "circle", x: 0, y: 0, text: "原因" })),

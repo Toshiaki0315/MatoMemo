@@ -971,6 +971,31 @@ describe("コネクタの矢印", () => {
   });
 });
 
+describe("直線のリサイズ", () => {
+  it("通常の最小サイズより小さくして水平な線にできる", () => {
+    const store = setup();
+    const id = store
+      .getState()
+      .addItem((itemId) =>
+        createShape({ id: itemId, shape: "line", x: 0, y: 0, width: 200, height: 100 }),
+      );
+    // 下辺を上へ 98 引き上げる。通常のアイテムなら 24 で止まる
+    store.getState().resizeItem(id, "s", 0, -98);
+    expect(findItem(store.getState().board, id)).toMatchObject({ height: 2 });
+  });
+
+  it("図形は従来どおり最小サイズで止まる", () => {
+    const store = setup();
+    const id = store
+      .getState()
+      .addItem((itemId) =>
+        createShape({ id: itemId, shape: "rectangle", x: 0, y: 0, width: 200, height: 100 }),
+      );
+    store.getState().resizeItem(id, "s", 0, -98);
+    expect(findItem(store.getState().board, id)).toMatchObject({ height: 24 });
+  });
+});
+
 describe("整列", () => {
   /** 縦横にずれた付箋 2 枚を追加して両方選択する。 */
   function setupTwoSelected() {

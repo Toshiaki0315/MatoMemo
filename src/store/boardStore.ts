@@ -37,7 +37,7 @@ import {
   replaceItem as replaceItemInBoard,
 } from "../domain/boardOps";
 import { createId as defaultCreateId } from "../domain/ids";
-import { resizeRect, type ResizeHandle } from "../domain/resize";
+import { LINE_MIN_SIZE, resizeRect, type ResizeHandle } from "../domain/resize";
 import { createViewport, type Viewport } from "../domain/viewport";
 import {
   bringForward,
@@ -395,10 +395,13 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
           }
           // 画像は縦横比を維持する。原寸の比を基準にすることで、
           // 何度リサイズしても元の比から少しずつずれていくことがない。
+          // 直線は水平・垂直にできるよう、外接矩形をほぼ潰せるまで許す。
           const resizeOptions =
             item.type === "image"
               ? { aspectRatio: item.naturalWidth / item.naturalHeight }
-              : {};
+              : item.type === "shape" && item.shape === "line"
+                ? { minSize: LINE_MIN_SIZE }
+                : {};
           const bounds = resizeRect(
             { x: item.x, y: item.y, width: item.width, height: item.height },
             handle,

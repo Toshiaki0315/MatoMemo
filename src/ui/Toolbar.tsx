@@ -125,8 +125,14 @@ export function Toolbar({
         <button type="button" onClick={() => onAddShape("rectangle")}>
           矩形
         </button>
+        <button type="button" onClick={() => onAddShape("rounded")}>
+          角丸
+        </button>
         <button type="button" onClick={() => onAddShape("circle")}>
           円
+        </button>
+        <button type="button" onClick={() => onAddShape("line")}>
+          直線
         </button>
         <button type="button" onClick={onAddText}>
           テキスト

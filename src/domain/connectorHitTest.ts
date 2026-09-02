@@ -7,7 +7,7 @@
 
 import { bendSegment, connectorEnds, connectorPath } from "./connectorPath";
 import type { Board, Connector, ConnectorId, Item } from "./board";
-import type { Point } from "./geometry";
+import { distanceToSegment, type Point } from "./geometry";
 
 /** 線を掴めるとみなす画面上の距離 (px)。 */
 export const CONNECTOR_HIT_TOLERANCE = 8;
@@ -24,21 +24,9 @@ export const CONNECTOR_HANDLE_HIT_RADIUS = 12;
 /** 曲線を折れ線に近似するときの分割数。 */
 const CURVE_SEGMENTS = 24;
 
-/** 線分と点の距離。 */
-export function distanceToSegment(point: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) {
-    return Math.hypot(point.x - a.x, point.y - a.y);
-  }
-  // 線分上で最も近い位置を 0〜1 の媒介変数として求める
-  const t = Math.max(
-    0,
-    Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared),
-  );
-  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
-}
+// 線分と点の距離は他の当たり判定（直線図形）とも共用するため geometry に
+// 置き、従来の利用元のためにここからも公開する
+export { distanceToSegment };
 
 /** 3 次ベジェ曲線上の点。 */
 function bezierPoint(

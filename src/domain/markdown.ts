@@ -12,10 +12,18 @@
  * こうすることで、どんな繋がり方でも必ず有限の出力になり、内容も失われない。
  */
 
-import type { Board, Item, ItemId } from "./board";
+import type { Board, Item, ItemId, ShapeKind } from "./board";
 
 /** 箇条書きの 1 段あたりの字下げ。 */
 const INDENT = "  ";
+
+/** テキストの無い図形に使う名前。 */
+const SHAPE_LABELS: Record<ShapeKind, string> = {
+  rectangle: "（矩形）",
+  rounded: "（角丸矩形）",
+  circle: "（円）",
+  line: "（直線）",
+};
 
 /** アイテムから箇条書きに書く文字列を作る。 */
 export function itemLabel(item: Item): string {
@@ -24,11 +32,7 @@ export function itemLabel(item: Item): string {
   }
   const text = item.text.trim();
   if (text === "") {
-    return item.type === "shape" && item.shape === "circle"
-      ? "（円）"
-      : item.type === "shape"
-        ? "（矩形）"
-        : "（空）";
+    return item.type === "shape" ? SHAPE_LABELS[item.shape] : "（空）";
   }
   // 改行は箇条書きを壊すので 1 行に均す
   return text.replace(/\s*\n\s*/g, " ");

@@ -98,3 +98,19 @@ export function rectContainsRect(outer: Rect, inner: Rect): boolean {
     inner.y + inner.height <= outer.y + outer.height
   );
 }
+
+/** 線分 `a`–`b` と点の距離。 */
+export function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - a.x, point.y - a.y);
+  }
+  // 線分上で最も近い位置を 0〜1 の媒介変数として求める
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared),
+  );
+  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
+}

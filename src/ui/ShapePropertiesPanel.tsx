@@ -27,25 +27,28 @@ export function ShapePropertiesPanel({
 }: ShapePropertiesPanelProps) {
   return (
     <div className="shape-properties" role="group" aria-label="図形の設定">
-      <label>
-        塗り
-        <select
-          value={item.fill ?? NO_FILL}
-          onChange={(event) =>
-            onChange({
-              ...item,
-              fill: event.target.value === NO_FILL ? null : event.target.value,
-            })
-          }
-        >
-          <option value={NO_FILL}>なし</option>
-          {FILL_COLORS.map((color) => (
-            <option key={color.value} value={color.value}>
-              {color.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* 直線は領域を持たないので塗りの設定を出さない */}
+      {item.shape === "line" ? null : (
+        <label>
+          塗り
+          <select
+            value={item.fill ?? NO_FILL}
+            onChange={(event) =>
+              onChange({
+                ...item,
+                fill: event.target.value === NO_FILL ? null : event.target.value,
+              })
+            }
+          >
+            <option value={NO_FILL}>なし</option>
+            {FILL_COLORS.map((color) => (
+              <option key={color.value} value={color.value}>
+                {color.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label>
         枠線の太さ

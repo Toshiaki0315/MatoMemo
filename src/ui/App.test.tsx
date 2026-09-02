@@ -194,6 +194,22 @@ describe("App: アイテムの追加", () => {
     ]);
   });
 
+  it("角丸矩形を追加する", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "角丸" }));
+    expect(store.getState().board.items).toMatchObject([
+      { type: "shape", shape: "rounded" },
+    ]);
+  });
+
+  it("直線を追加する", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "直線" }));
+    expect(store.getState().board.items).toMatchObject([
+      { type: "shape", shape: "line", lineDirection: "down" },
+    ]);
+  });
+
   it("テキストを追加する", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
@@ -692,6 +708,62 @@ describe("App: 重なり順の変更", () => {
     });
     rightClickItem(2);
     expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+});
+
+describe("App: 直線", () => {
+  /** 直線を 1 本追加し、線の上の座標を返す。 */
+  function addLine() {
+    fireEvent.click(screen.getByRole("button", { name: "直線" }));
+    const line = store.getState().board.items[0];
+    return {
+      x: (line?.x ?? 0) + (line?.width ?? 0) / 2,
+      y: (line?.y ?? 0) + (line?.height ?? 0) / 2,
+    };
+  }
+
+  it("ダブルクリックしてもテキスト編集は始まらない", () => {
+    renderApp();
+    const center = addLine();
+    fireEvent.dblClick(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
+  });
+
+  it("メニューから向きを反転できる", () => {
+    renderApp();
+    const center = addLine();
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: center.x,
+      clientY: center.y,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "線の向きを反転" }));
+    expect(store.getState().board.items[0]).toMatchObject({
+      lineDirection: "up",
+    });
+  });
+
+  it("直線以外には反転メニューを出さない", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "矩形" }));
+    const item = store.getState().board.items[0];
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: (item?.x ?? 0) + 10,
+      clientY: (item?.y ?? 0) + 10,
+    });
+    expect(
+      screen.queryByRole("menuitem", { name: "線の向きを反転" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("直線の設定パネルには塗りを出さない", () => {
+    renderApp();
+    addLine();
+    // 追加直後は選択されているので図形パネルが出る
+    expect(screen.getByRole("group", { name: "図形の設定" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("塗り")).not.toBeInTheDocument();
   });
 });
 

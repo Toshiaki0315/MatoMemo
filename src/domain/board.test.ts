@@ -13,6 +13,7 @@ import {
   createShape,
   createStickyNote,
   createText,
+  lineEndpoints,
 } from "./board";
 
 describe("STICKY_COLORS", () => {
@@ -74,6 +75,69 @@ describe("createStickyNote", () => {
       height: 150,
       text: "やること",
       color: "blue",
+    });
+  });
+});
+
+describe("createShape: 直線と角丸", () => {
+  it("角丸矩形を作れる", () => {
+    expect(
+      createShape({ id: "i1", shape: "rounded", x: 0, y: 0 }),
+    ).toMatchObject({ shape: "rounded", fill: "#FFFFFF" });
+  });
+
+  it("直線はほぼ水平な線として作り、塗らない", () => {
+    expect(createShape({ id: "i1", shape: "line", x: 0, y: 0 })).toMatchObject({
+      shape: "line",
+      width: 200,
+      height: 2,
+      fill: null,
+      lineDirection: "down",
+    });
+  });
+
+  it("直線の向きを指定できる", () => {
+    expect(
+      createShape({ id: "i1", shape: "line", x: 0, y: 0, lineDirection: "up" }),
+    ).toMatchObject({ lineDirection: "up" });
+  });
+
+  it("直線以外は向きを持たない", () => {
+    expect(
+      "lineDirection" in createShape({ id: "i1", shape: "circle", x: 0, y: 0 }),
+    ).toBe(false);
+  });
+});
+
+describe("lineEndpoints", () => {
+  it("down は左上から右下へ引く", () => {
+    const line = createShape({
+      id: "l",
+      shape: "line",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+    });
+    expect(lineEndpoints(line)).toEqual({
+      from: { x: 10, y: 20 },
+      to: { x: 110, y: 70 },
+    });
+  });
+
+  it("up は左下から右上へ引く", () => {
+    const line = createShape({
+      id: "l",
+      shape: "line",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      lineDirection: "up",
+    });
+    expect(lineEndpoints(line)).toEqual({
+      from: { x: 10, y: 70 },
+      to: { x: 110, y: 20 },
     });
   });
 });
