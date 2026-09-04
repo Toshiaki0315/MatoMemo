@@ -26,6 +26,10 @@ import {
 import { boardToMarkdown } from "../domain/markdown";
 import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
+import {
+  importImageFile,
+  type ImportedImage,
+} from "../platform/imageImport";
 import { setPanKeyHeld as setPanKeyHeldDefault } from "../platform/cursor";
 import {
   closeWindow as closeWindowDefault,
@@ -55,6 +59,9 @@ export const AUTOSAVE_INTERVAL_MS = 30_000;
 const CASCADE_OFFSET = 24;
 const CASCADE_LENGTH = 8;
 
+/** 落とされたファイルを取り込む手段。 */
+export type ImageFileImporter = (file: File) => Promise<ImportedImage>;
+
 export interface AppProps {
   /**
    * 使用するストア。既定はアプリ全体で共有するストア。
@@ -63,6 +70,8 @@ export interface AppProps {
   readonly store?: BoardStore;
   /** 画像を選ばせる手段。テストでは差し替える。 */
   readonly imagePicker?: ImagePicker;
+  /** 落とされたファイルを取り込む手段。テストでは差し替える。 */
+  readonly imageFileImporter?: ImageFileImporter;
   /** ボードの読み書きの手段。テストではインメモリ実装に差し替える。 */
   readonly fileStore?: BoardFileStore;
   /** ウィンドウを閉じる要求の購読。テストでは差し替える。 */
@@ -96,6 +105,7 @@ function getDefaultFileStore(): BoardFileStore {
 export function App({
   store = useBoardStore,
   imagePicker = pickImage,
+  imageFileImporter = importImageFile,
   fileStore = getDefaultFileStore(),
   closeGuard = guardWindowClose,
   closeWindow = closeWindowDefault,
@@ -263,6 +273,48 @@ export function App({
       );
     }
   }, [addItem, imagePicker, nextItemPosition]);
+
+  /**
+   * 落とされたファイルを取り込む。
+   *
+   * 落とした位置を中心に置く。複数あれば少しずつずらし、まとめて
+   * 1 回の取り消しで戻せるようにする。1 つが取り込めなくても、
+   * 残りはそのまま取り込む。
+   */
+  const handleDropFiles = useCallback(
+    async (files: readonly File[], point: Point) => {
+      setError(null);
+      let failure: string | null = null;
+      beginHistoryGroup();
+      try {
+        for (const [index, file] of files.entries()) {
+          const step = index * CASCADE_OFFSET;
+          try {
+            const imported = await imageFileImporter(file);
+            addItem((id) => {
+              const item = createImage({ id, x: 0, y: 0, ...imported });
+              return {
+                ...item,
+                x: point.x + step - item.width / 2,
+                y: point.y + step - item.height / 2,
+              };
+            });
+          } catch (cause) {
+            failure ??=
+              cause instanceof Error
+                ? cause.message
+                : "画像を取り込めませんでした。";
+          }
+        }
+      } finally {
+        endHistoryGroup();
+      }
+      if (failure !== null) {
+        setError(failure);
+      }
+    },
+    [addItem, beginHistoryGroup, endHistoryGroup, imageFileImporter],
+  );
 
   /**
    * ファイル操作の失敗を利用者に伝える。
@@ -661,6 +713,7 @@ export function App({
         onDeleteSelected={handleDeleteSelected}
         onBeginInteraction={beginHistoryGroup}
         onEndInteraction={endHistoryGroup}
+        onDropFiles={(files, point) => void handleDropFiles(files, point)}
         onContextMenu={handleContextMenu}
         onActivateItem={handleActivateItem}
         connectMode={connectMode}

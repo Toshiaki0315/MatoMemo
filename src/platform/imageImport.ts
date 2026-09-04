@@ -110,3 +110,17 @@ export async function importImageBytes(
     naturalHeight: size.height,
   };
 }
+
+/**
+ * ドロップされた `File` を取り込む。
+ *
+ * 経路が違うだけで中身の扱いは同じなので、バイト列にしてから
+ * `importImageBytes` に渡す。対応していない形式ならここで弾かれる。
+ */
+export async function importImageFile(
+  file: File,
+  options: ImportImageOptions = {},
+): Promise<ImportedImage> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return importImageBytes(bytes, options);
+}

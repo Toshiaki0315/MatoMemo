@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 import capability from "../../src-tauri/capabilities/default.json";
+import tauriConfig from "../../src-tauri/tauri.conf.json";
 // パッケージの exports で公開されていないので、実ファイルを直接読む
 import dialogPluginSource from "../../node_modules/@tauri-apps/plugin-dialog/dist-js/index.js?raw";
 import fsPluginSource from "../../node_modules/@tauri-apps/plugin-fs/dist-js/index.js?raw";
@@ -120,6 +121,17 @@ describe("独自コマンド", () => {
       expect(shellSource, `${command} が登録されていません`).toMatch(
         new RegExp(`generate_handler!\\[[^\\]]*${command}`),
       );
+    }
+  });
+});
+
+describe("ウィンドウの設定", () => {
+  it("Tauri の drag-drop 横取りを止めてある", () => {
+    // 既定 (true) では Tauri が OS のドロップを横取りし、webview に
+    // HTML5 の drop が届かない。画像を落として取り込めなくなるため、
+    // 明示的に切ってある。設定が消えると実機でだけ動かなくなる
+    for (const window of tauriConfig.app.windows) {
+      expect(window.dragDropEnabled).toBe(false);
     }
   });
 });

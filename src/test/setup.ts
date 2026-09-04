@@ -69,6 +69,43 @@ if (typeof globalThis.ImageData === "undefined") {
   globalThis.ImageData = ImageDataPolyfill as unknown as typeof ImageData;
 }
 
+/**
+ * jsdom は `DragEvent` も実装していない。無いと Testing Library が
+ * drop を素の `Event` として送出し、`clientX` も `dataTransfer` も
+ * 伝わらないため、ファイルを落とすテストが書けない。
+ * `MouseEvent` を継承した最小限の実装を用意する。
+ */
+if (typeof globalThis.DragEvent === "undefined") {
+  class DragEventPolyfill extends MouseEvent {
+    readonly dataTransfer: DataTransfer | null;
+
+    constructor(type: string, params: DragEventInit = {}) {
+      super(type, params);
+      this.dataTransfer = params.dataTransfer ?? null;
+    }
+  }
+
+  globalThis.DragEvent = DragEventPolyfill as unknown as typeof DragEvent;
+}
+
+/**
+ * jsdom の `Blob` には `arrayBuffer` が無い。ドロップされた `File` を
+ * 読むのに使うので、`FileReader` で置き換えた実装を用意する。
+ * WKWebView にはあるので、本体側は素直に `arrayBuffer` を使う。
+ */
+if (typeof Blob.prototype.arrayBuffer !== "function") {
+  Blob.prototype.arrayBuffer = function arrayBuffer(this: Blob) {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => {
+        resolve(reader.result as ArrayBuffer);
+      });
+      reader.addEventListener("error", () => reject(reader.error));
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 afterEach(() => {
   cleanup();
 });

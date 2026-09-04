@@ -68,6 +68,7 @@ function renderCanvas(options: RenderOptions = {}) {
     onPickForConnection: vi.fn(),
     onBeginInteraction: vi.fn(),
     onEndInteraction: vi.fn(),
+    onDropFiles: vi.fn(),
   };
   const props = {
     viewport: options.viewport ?? createViewport(),
@@ -1560,5 +1561,76 @@ describe("BoardCanvas: 折れ線の中間の線", () => {
     const { canvas } = renderCanvas({ board, selectedConnectorId: "c1" });
     fireEvent.pointerMove(canvas, { clientX: 150, clientY: 200 });
     expect(canvas.style.cursor).toBe("ns-resize");
+  });
+});
+
+describe("BoardCanvas: ファイルのドロップ", () => {
+  /** 指定した中身の File。 */
+  function fileOf(name: string) {
+    return new File([new Uint8Array([1, 2, 3]) as BlobPart], name);
+  }
+
+  /** files を載せた DataTransfer 相当。jsdom には DataTransfer が無い。 */
+  function transferOf(files: readonly File[]) {
+    return { files, types: ["Files"], dropEffect: "none" };
+  }
+
+  it("落とされたファイルを位置とともに渡す", () => {
+    const { canvas, onDropFiles } = renderCanvas();
+    const file = fileOf("a.png");
+    fireEvent.drop(canvas, {
+      clientX: 120,
+      clientY: 80,
+      dataTransfer: transferOf([file]),
+    });
+    expect(onDropFiles).toHaveBeenCalledWith([file], { x: 120, y: 80 });
+  });
+
+  it("落とした位置をワールド座標に直す", () => {
+    const { canvas, onDropFiles } = renderCanvas({
+      viewport: { x: -100, y: -50, scale: 2 },
+    });
+    fireEvent.drop(canvas, {
+      clientX: 120,
+      clientY: 80,
+      dataTransfer: transferOf([fileOf("a.png")]),
+    });
+    // 画面 (120,80) は ((120 - -100)/2, (80 - -50)/2) = (110, 65)
+    expect(onDropFiles).toHaveBeenCalledWith(expect.anything(), {
+      x: 110,
+      y: 65,
+    });
+  });
+
+  it("複数のファイルをまとめて渡す", () => {
+    const { canvas, onDropFiles } = renderCanvas();
+    const files = [fileOf("a.png"), fileOf("b.png")];
+    fireEvent.drop(canvas, {
+      clientX: 0,
+      clientY: 0,
+      dataTransfer: transferOf(files),
+    });
+    expect(onDropFiles.mock.calls[0]?.[0]).toEqual(files);
+  });
+
+  it("ファイルが無ければ何もしない", () => {
+    const { canvas, onDropFiles } = renderCanvas();
+    fireEvent.drop(canvas, {
+      clientX: 0,
+      clientY: 0,
+      dataTransfer: transferOf([]),
+    });
+    expect(onDropFiles).not.toHaveBeenCalled();
+  });
+
+  it("ドラッグ中はコピーとして受け入れる", () => {
+    const { canvas } = renderCanvas();
+    const transfer = transferOf([fileOf("a.png")]);
+    const event = new Event("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    canvas.dispatchEvent(event);
+    // 既定の動作 (ブラウザが画像を開く) を止めないと drop が来ない
+    expect(event.defaultPrevented).toBe(true);
+    expect(transfer.dropEffect).toBe("copy");
   });
 });

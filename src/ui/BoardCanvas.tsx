@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
@@ -107,6 +108,11 @@ export interface BoardCanvasProps {
   readonly images?: ImageCache;
   /** 編集中のアイテム。Canvas 側ではそのテキストを描かない。 */
   readonly editingItemId?: ItemId;
+  /**
+   * ファイルが落とされたとき。位置はワールド座標。
+   * 取り込みそのものは呼び出し側に任せ、ここでは位置だけを解決する。
+   */
+  readonly onDropFiles?: (files: readonly File[], world: Point) => void;
 }
 
 /** 右クリックの対象。 */
@@ -167,6 +173,7 @@ export function BoardCanvas({
   theme,
   images,
   editingItemId,
+  onDropFiles,
 }: BoardCanvasProps) {
   // ref ではなく state で要素を保持する。要素が挿入された時点で再レンダリングが
   // 走るため、サイズ計測とイベント登録の副作用を素直に書ける。
@@ -709,6 +716,32 @@ export function BoardCanvas({
       ? null
       : thumbLayout(scrollbars.vertical, trackLengths.y);
 
+  /**
+   * ファイルのドラッグを受け入れる。
+   *
+   * 既定の動作を止めないと、ブラウザ（webview）が落とされた画像を
+   * そのまま開いてしまい、drop が届かない。
+   */
+  const handleDragOver = (event: ReactDragEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  /** 落とされたファイルを、落とした位置のワールド座標とともに渡す。 */
+  const handleDrop = (event: ReactDragEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const files = [...event.dataTransfer.files];
+    if (files.length === 0) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const world = toWorld(viewport, {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    });
+    onDropFiles?.(files, world);
+  };
+
   const beginScrollDrag =
     (axis: "x" | "y", track: ScrollbarTrack, movable: number) =>
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -756,6 +789,8 @@ export function BoardCanvas({
         ref={setCanvas}
         data-testid="board-canvas"
         className="board-canvas"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         style={{
           cursor: currentCursor(
             isPanning,

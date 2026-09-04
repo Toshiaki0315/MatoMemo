@@ -577,6 +577,109 @@ describe("App: 画像の取り込み", () => {
     expect(screen.queryByLabelText("アイテムのテキスト")).not.toBeInTheDocument();
   });
 
+  /** files を載せた DataTransfer 相当。jsdom には DataTransfer が無い。 */
+  function transferOf(files: readonly File[]) {
+    return { files, types: ["Files"], dropEffect: "none" };
+  }
+
+  function fileOf(name: string) {
+    return new File([new Uint8Array([1, 2, 3]) as BlobPart], name);
+  }
+
+  /** 落とした File をそのまま取り込んだことにする。 */
+  function renderWithDropImporter(
+    importer: (file: File) => Promise<typeof imported>,
+  ) {
+    return render(
+      <App
+        store={store}
+        imageFileImporter={importer}
+        closeGuard={noopCloseGuard}
+      />,
+    );
+  }
+
+  async function dropFiles(files: readonly File[], at = { x: 300, y: 200 }) {
+    await act(async () => {
+      fireEvent.drop(screen.getByTestId("board-canvas"), {
+        clientX: at.x,
+        clientY: at.y,
+        dataTransfer: transferOf(files),
+      });
+    });
+  }
+
+  it("落とした画像をアイテムとして追加する", async () => {
+    renderWithDropImporter(async () => imported);
+    await dropFiles([fileOf("a.png")]);
+    expect(store.getState().board.items).toMatchObject([
+      { type: "image", naturalWidth: 200, naturalHeight: 100 },
+    ]);
+  });
+
+  it("落とした位置を中心に置く", async () => {
+    renderWithDropImporter(async () => imported);
+    await dropFiles([fileOf("a.png")], { x: 300, y: 200 });
+    const item = store.getState().board.items[0];
+    expect((item?.x ?? 0) + (item?.width ?? 0) / 2).toBeCloseTo(300, 5);
+    expect((item?.y ?? 0) + (item?.height ?? 0) / 2).toBeCloseTo(200, 5);
+  });
+
+  it("複数落とすとすべて取り込み、少しずつずらす", async () => {
+    renderWithDropImporter(async () => imported);
+    await dropFiles([fileOf("a.png"), fileOf("b.png")]);
+    const items = store.getState().board.items;
+    expect(items).toHaveLength(2);
+    expect(items[1]?.x).toBeGreaterThan(items[0]?.x ?? 0);
+    expect(items[1]?.y).toBeGreaterThan(items[0]?.y ?? 0);
+  });
+
+  it("複数落としても 1 回の取り消しでまとめて戻る", async () => {
+    renderWithDropImporter(async () => imported);
+    await dropFiles([fileOf("a.png"), fileOf("b.png")]);
+    fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("取り込めないファイルはメッセージで伝える", async () => {
+    renderWithDropImporter(async () => {
+      throw new Error("対応していない画像形式です。");
+    });
+    await dropFiles([fileOf("a.txt")]);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "対応していない画像形式です。",
+    );
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("Error でないものが投げられても既定のメッセージで伝える", async () => {
+    renderWithDropImporter(async () => {
+      throw "想定外";
+    });
+    await dropFiles([fileOf("a.png")]);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "画像を取り込めませんでした。",
+    );
+  });
+
+  it("1 つ失敗しても残りは取り込む", async () => {
+    renderWithDropImporter(async (file) => {
+      if (file.name.endsWith(".txt")) {
+        throw new Error("対応していない画像形式です。");
+      }
+      return imported;
+    });
+    await dropFiles([fileOf("a.txt"), fileOf("b.png")]);
+    expect(store.getState().board.items).toHaveLength(1);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("既定では実際の取り込み処理を使う", () => {
+    expect(() =>
+      render(<App store={store} closeGuard={noopCloseGuard} />),
+    ).not.toThrow();
+  });
+
   it("既定では実際の画像ピッカーを使う", () => {
     expect(() =>
       render(<App store={store} closeGuard={noopCloseGuard} />),

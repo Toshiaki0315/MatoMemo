@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { ImageImportError, importImageBytes } from "./imageImport";
+import {
+  ImageImportError,
+  importImageBytes,
+  importImageFile,
+} from "./imageImport";
 
 /** 24 ビット 1x1 の最小 BMP。 */
 function tinyBmp(): Uint8Array {
@@ -203,3 +207,27 @@ function lastCreatedImage(): HTMLImageElement {
   created = [];
   return image;
 }
+
+describe("importImageFile", () => {
+  /** バイト列を持つ File を作る。jsdom の File は arrayBuffer を持つ。 */
+  function fileOf(bytes: Uint8Array, name: string) {
+    return new File([bytes as BlobPart], name);
+  }
+
+  it("File の中身を読んで取り込む", async () => {
+    const measure = vi.fn(async () => ({ width: 4, height: 3 }));
+    const imported = await importImageFile(fileOf(PNG_BYTES, "a.png"), {
+      measure,
+    });
+    expect(imported.naturalWidth).toBe(4);
+    expect(imported.naturalHeight).toBe(3);
+    expect(imported.source.startsWith("data:image/png;base64,")).toBe(true);
+  });
+
+  it("画像でない File は取り込めない", async () => {
+    const text = new Uint8Array([0x68, 0x65, 0x6c, 0x6c, 0x6f]);
+    await expect(
+      importImageFile(fileOf(text, "a.txt")),
+    ).rejects.toThrow(ImageImportError);
+  });
+});
