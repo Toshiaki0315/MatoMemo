@@ -745,6 +745,25 @@ describe("App: 直線", () => {
     });
   });
 
+  it("もう一度反転すると元の向きに戻る", () => {
+    renderApp();
+    const center = addLine();
+    const flip = () => {
+      fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+        clientX: center.x,
+        clientY: center.y,
+      });
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "線の向きを反転" }),
+      );
+    };
+    flip();
+    flip();
+    expect(store.getState().board.items[0]).toMatchObject({
+      lineDirection: "down",
+    });
+  });
+
   it("直線以外には反転メニューを出さない", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "矩形" }));
