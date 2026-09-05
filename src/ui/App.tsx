@@ -663,6 +663,21 @@ export function App({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busy, handleSave, handleSaveAs, redo, requestAction, undo]);
 
+  // Canvas 外（ツールバーや余白など）にファイルが落とされたときに、
+  // ブラウザ（WebKit）がファイルを開いて画面遷移してしまわないよう、
+  // ウィンドウ全体で既定のドロップ動作を抑止する。
+  useEffect(() => {
+    const preventDefault = (event: DragEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
+    return () => {
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
+    };
+  }, []);
+
   const zoomPercent = Math.round(clampScale(viewport.scale) * 100);
 
   return (

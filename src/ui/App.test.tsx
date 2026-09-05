@@ -674,6 +674,20 @@ describe("App: 画像の取り込み", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
+  it("キャンバス外へのドラッグやドロップでも既定のナビゲーションを抑止する", () => {
+    renderWithDropImporter(async () => imported);
+    const dragOverEvent = new Event("dragover", {
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(dragOverEvent);
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    window.dispatchEvent(dropEvent);
+    expect(dropEvent.defaultPrevented).toBe(true);
+  });
+
   it("既定では実際の取り込み処理を使う", () => {
     expect(() =>
       render(<App store={store} closeGuard={noopCloseGuard} />),
