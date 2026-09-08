@@ -20,10 +20,13 @@ import {
 } from "../domain/viewport";
 import {
   MARKDOWN_FILE_FILTER,
+  PNG_FILE_FILTER,
+  SVG_FILE_FILTER,
   suggestFileName,
   type BoardFileStore,
 } from "../platform/boardFileStore";
 import { boardToMarkdown } from "../domain/markdown";
+import { boardToSvg, drawBoardForPng } from "../render/exportBoard";
 import { createTauriBoardFileStore } from "../platform/tauriBoardFileStore";
 import { pickImage, type ImagePicker } from "../platform/imagePicker";
 import {
@@ -381,6 +384,59 @@ export function App({
     })();
   }, [board, fileStore, reportFailure]);
 
+  /** ボード全体を SVG 画像として書き出す。 */
+  const handleExportSvg = useCallback(() => {
+    const svg = boardToSvg(board, images);
+    if (svg === null) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    void (async () => {
+      try {
+        await fileStore.exportText(
+          svg,
+          suggestFileName(board.name, "svg"),
+          SVG_FILE_FILTER,
+        );
+      } catch (cause) {
+        reportFailure(cause);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [board, fileStore, images, reportFailure]);
+
+  /** ボード全体を PNG 画像として書き出す。 */
+  const handleExportPng = useCallback(() => {
+    const canvas = document.createElement("canvas");
+    if (!drawBoardForPng(board, images, canvas)) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    void (async () => {
+      try {
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob(resolve, "image/png");
+        });
+        if (blob === null) {
+          throw new Error("PNG を作れませんでした。");
+        }
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        await fileStore.exportBinary(
+          bytes,
+          suggestFileName(board.name, "png"),
+          PNG_FILE_FILTER,
+        );
+      } catch (cause) {
+        reportFailure(cause);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [board, fileStore, images, reportFailure]);
+
   /** 確認を経たうえで実際に行う破壊的な操作。 */
   const runPending = useCallback(
     async (action: PendingAction) => {
@@ -692,6 +748,9 @@ export function App({
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onExportMarkdown={handleExportMarkdown}
+          onExportSvg={handleExportSvg}
+          onExportPng={handleExportPng}
+          canExportImage={board.items.length > 0}
           busy={busy}
         />
 

@@ -800,3 +800,83 @@ describe("自動保存", () => {
     expect(store.getState().isDirty()).toBe(true);
   });
 });
+
+describe("画像出力", () => {
+  it("SVG 出力でボードを SVG として書き出す", async () => {
+    fileStore.exportPath = "/tmp/board.svg";
+    renderApp();
+    click("黄色の付箋を追加");
+
+    click("SVG 出力");
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/board.svg")).toBe(true);
+    });
+    const svg = fileStore.files.get("/tmp/board.svg") ?? "";
+    expect(svg.startsWith("<svg ")).toBe(true);
+    expect(svg).toContain("</svg>");
+  });
+
+  it("PNG 出力でボードをバイナリとして書き出す", async () => {
+    fileStore.exportPath = "/tmp/board.png";
+    // jsdom の canvas は PNG を作れないので、toBlob を差し替える
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
+      callback({
+        arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+      } as Blob);
+    };
+    try {
+      renderApp();
+      click("黄色の付箋を追加");
+
+      click("PNG 出力");
+      await waitFor(() => {
+        expect(fileStore.binaryFiles.has("/tmp/board.png")).toBe(true);
+      });
+      expect(fileStore.binaryFiles.get("/tmp/board.png")).toEqual(
+        new Uint8Array([137, 80, 78, 71]),
+      );
+    } finally {
+      HTMLCanvasElement.prototype.toBlob = original;
+    }
+  });
+
+  it("PNG を作れなかったらメッセージを出す", async () => {
+    fileStore.exportPath = "/tmp/board.png";
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
+      callback(null);
+    };
+    try {
+      renderApp();
+      click("黄色の付箋を追加");
+      click("PNG 出力");
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "PNG を作れませんでした。",
+        );
+      });
+      expect(fileStore.binaryFiles.size).toBe(0);
+    } finally {
+      HTMLCanvasElement.prototype.toBlob = original;
+    }
+  });
+
+  it("アイテムが無ければ画像出力ボタンは無効", () => {
+    renderApp();
+    expect(screen.getByRole("button", { name: "SVG 出力" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "PNG 出力" })).toBeDisabled();
+    click("黄色の付箋を追加");
+    expect(screen.getByRole("button", { name: "SVG 出力" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "PNG 出力" })).toBeEnabled();
+  });
+
+  it("画像出力してもボードは未保存のままにする", async () => {
+    fileStore.exportPath = "/tmp/board.svg";
+    renderApp();
+    click("黄色の付箋を追加");
+    click("SVG 出力");
+    await waitFor(() => expect(fileStore.files.size).toBe(1));
+    expect(store.getState().isDirty()).toBe(true);
+  });
+});

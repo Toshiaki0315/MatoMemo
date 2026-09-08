@@ -53,6 +53,11 @@ const REQUIRED_PERMISSIONS: readonly {
     permission: "fs:allow-read-file",
   },
   {
+    api: "fs.writeFile (PNG の書き出し)",
+    command: "plugin:fs|write_file",
+    permission: "fs:allow-write-file",
+  },
+  {
     api: "window.destroy (終了)",
     // コアのコマンドはプラグイン形式の名前を持たない
     command: "",

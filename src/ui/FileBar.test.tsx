@@ -10,6 +10,8 @@ function renderBar(overrides: Partial<Parameters<typeof FileBar>[0]> = {}) {
     onSave: vi.fn(),
     onSaveAs: vi.fn(),
     onExportMarkdown: vi.fn(),
+    onExportSvg: vi.fn(),
+    onExportPng: vi.fn(),
   };
   render(
     <FileBar

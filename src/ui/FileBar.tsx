@@ -12,6 +12,10 @@ export interface FileBarProps {
   readonly onSave: () => void;
   readonly onSaveAs: () => void;
   readonly onExportMarkdown: () => void;
+  readonly onExportSvg: () => void;
+  readonly onExportPng: () => void;
+  /** 画像を書き出せるか。アイテムが無いときは書き出す内容が無い。 */
+  readonly canExportImage?: boolean;
   /** 保存処理の実行中か。 */
   readonly busy?: boolean;
 }
@@ -25,6 +29,9 @@ export function FileBar({
   onSave,
   onSaveAs,
   onExportMarkdown,
+  onExportSvg,
+  onExportPng,
+  canExportImage = true,
   busy = false,
 }: FileBarProps) {
   return (
@@ -61,6 +68,20 @@ export function FileBar({
       </button>
       <button type="button" onClick={onExportMarkdown} disabled={busy}>
         Markdown 出力
+      </button>
+      <button
+        type="button"
+        onClick={onExportSvg}
+        disabled={busy || !canExportImage}
+      >
+        SVG 出力
+      </button>
+      <button
+        type="button"
+        onClick={onExportPng}
+        disabled={busy || !canExportImage}
+      >
+        PNG 出力
       </button>
     </div>
   );

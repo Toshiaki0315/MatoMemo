@@ -16,6 +16,8 @@ import {
 export interface MemoryBoardFileStore extends BoardFileStore {
   /** パスから保存内容へのマップ。テストから内容を確認・投入できる。 */
   readonly files: Map<string, string>;
+  /** パスからバイナリの保存内容へのマップ。 */
+  readonly binaryFiles: Map<string, Uint8Array>;
   /** `open()` が返すパス。null ならキャンセル扱い。 */
   openPath: string | null;
   /** `saveAs()` が返すパス。null ならキャンセル扱い。 */
@@ -37,6 +39,7 @@ export function createMemoryBoardFileStore(
 ): MemoryBoardFileStore {
   const store: MemoryBoardFileStore = {
     files: new Map(Object.entries(options.files ?? {})),
+    binaryFiles: new Map<string, Uint8Array>(),
     openPath: options.openPath ?? null,
     savePath: options.savePath ?? null,
     exportPath: options.exportPath ?? null,
@@ -75,6 +78,14 @@ export function createMemoryBoardFileStore(
         return null;
       }
       store.files.set(store.exportPath, text);
+      return store.exportPath;
+    },
+
+    async exportBinary(bytes: Uint8Array): Promise<string | null> {
+      if (store.exportPath === null) {
+        return null;
+      }
+      store.binaryFiles.set(store.exportPath, bytes);
       return store.exportPath;
     },
   };

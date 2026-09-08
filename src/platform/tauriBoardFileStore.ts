@@ -11,7 +11,7 @@ import {
   open as openDialog,
   save as saveDialog,
 } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeFile } from "@tauri-apps/plugin-fs";
 import type { Board } from "../domain/board";
 import { parseBoardFile, serializeBoard } from "../domain/serialize";
 import {
@@ -119,6 +119,34 @@ export function createTauriBoardFileStore(): BoardFileStore {
       }
       try {
         await writeTextFileAtomic(path, text);
+      } catch (cause) {
+        throw new StorageError(`ファイルを書き出せませんでした: ${path}`, cause);
+      }
+      return path;
+    },
+
+    async exportBinary(bytes, suggestedName, filter) {
+      let path: string | null;
+      try {
+        path = await saveDialog({
+          defaultPath: suggestedName,
+          filters: [
+            { name: filter.name, extensions: [...filter.extensions] },
+          ],
+        });
+      } catch (cause) {
+        throw new StorageError(
+          "書き出し先ダイアログを表示できませんでした。",
+          cause,
+        );
+      }
+      if (path === null) {
+        return null;
+      }
+      try {
+        // 画像の書き出しは新しいファイルを作るのが普通なので、
+        // ボードの保存と違い一時ファイル + rename は使わない
+        await writeFile(path, bytes);
       } catch (cause) {
         throw new StorageError(`ファイルを書き出せませんでした: ${path}`, cause);
       }

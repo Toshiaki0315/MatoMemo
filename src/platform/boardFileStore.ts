@@ -52,6 +52,18 @@ export const MARKDOWN_FILE_FILTER = {
   extensions: ["md"],
 } as const;
 
+/** SVG 書き出し用のフィルタ。 */
+export const SVG_FILE_FILTER = {
+  name: "SVG 画像",
+  extensions: ["svg"],
+} as const;
+
+/** PNG 書き出し用のフィルタ。 */
+export const PNG_FILE_FILTER = {
+  name: "PNG 画像",
+  extensions: ["png"],
+} as const;
+
 /** ボードの読み書きを行う。 */
 export interface BoardFileStore {
   /** 開くダイアログを表示して読み込む。キャンセルされた場合は null。 */
@@ -64,10 +76,19 @@ export interface BoardFileStore {
   saveAs(board: Board): Promise<string | null>;
   /**
    * 書き出し先を尋ねてテキストを保存する。キャンセルされた場合は null。
-   * Markdown の書き出しに使う。
+   * Markdown と SVG の書き出しに使う。
    */
   exportText(
     text: string,
+    suggestedName: string,
+    filter: { readonly name: string; readonly extensions: readonly string[] },
+  ): Promise<string | null>;
+  /**
+   * 書き出し先を尋ねてバイナリを保存する。キャンセルされた場合は null。
+   * PNG の書き出しに使う。
+   */
+  exportBinary(
+    bytes: Uint8Array,
     suggestedName: string,
     filter: { readonly name: string; readonly extensions: readonly string[] },
   ): Promise<string | null>;

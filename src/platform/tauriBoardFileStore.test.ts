@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeFile } from "@tauri-apps/plugin-fs";
 import { createBoard, createStickyNote } from "../domain/board";
 import { serializeBoard } from "../domain/serialize";
 import { StorageError } from "./boardFileStore";
@@ -18,12 +18,14 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(),
+  writeFile: vi.fn(),
 }));
 
 const invokeMock = vi.mocked(invoke);
 const openDialogMock = vi.mocked(openDialog);
 const saveDialogMock = vi.mocked(saveDialog);
 const readTextFileMock = vi.mocked(readTextFile);
+const writeFileMock = vi.mocked(writeFile);
 
 function sampleBoard() {
   return {
@@ -198,6 +200,55 @@ describe("createTauriBoardFileStore: exportText", () => {
     invokeMock.mockRejectedValue(new Error("ENOSPC"));
     await expect(
       createTauriBoardFileStore().exportText("x", "a.md", filter),
+    ).rejects.toThrow(StorageError);
+  });
+});
+
+describe("createTauriBoardFileStore: exportBinary", () => {
+  const filter = { name: "PNG 画像", extensions: ["png"] } as const;
+  const bytes = new Uint8Array([137, 80, 78, 71]);
+
+  it("選ばれたパスにバイナリを書き出す", async () => {
+    saveDialogMock.mockResolvedValue("/tmp/board.png");
+    writeFileMock.mockResolvedValue(undefined);
+    const path = await createTauriBoardFileStore().exportBinary(
+      bytes,
+      "board.png",
+      filter,
+    );
+    expect(path).toBe("/tmp/board.png");
+    expect(writeFileMock).toHaveBeenCalledWith("/tmp/board.png", bytes);
+  });
+
+  it("既定のファイル名と拡張子のフィルタを渡す", async () => {
+    saveDialogMock.mockResolvedValue(null);
+    await createTauriBoardFileStore().exportBinary(bytes, "検討.png", filter);
+    expect(saveDialogMock).toHaveBeenCalledWith({
+      defaultPath: "検討.png",
+      filters: [{ name: "PNG 画像", extensions: ["png"] }],
+    });
+  });
+
+  it("キャンセルされたら書き出さず null を返す", async () => {
+    saveDialogMock.mockResolvedValue(null);
+    expect(
+      await createTauriBoardFileStore().exportBinary(bytes, "a.png", filter),
+    ).toBeNull();
+    expect(writeFileMock).not.toHaveBeenCalled();
+  });
+
+  it("書き込みが失敗したら StorageError にする", async () => {
+    saveDialogMock.mockResolvedValue("/tmp/board.png");
+    writeFileMock.mockRejectedValue(new Error("ENOSPC"));
+    await expect(
+      createTauriBoardFileStore().exportBinary(bytes, "a.png", filter),
+    ).rejects.toThrow(StorageError);
+  });
+
+  it("ダイアログが失敗したら StorageError にする", async () => {
+    saveDialogMock.mockRejectedValue(new Error("failed"));
+    await expect(
+      createTauriBoardFileStore().exportBinary(bytes, "a.png", filter),
     ).rejects.toThrow(StorageError);
   });
 });
