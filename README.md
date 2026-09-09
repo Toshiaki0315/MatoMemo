@@ -111,6 +111,22 @@ npm install
 
 ## コマンド
 
+日常の操作は `make` から行えます（`make help` で一覧）。
+
+| コマンド | 説明 |
+|---|---|
+| `make setup` | 初回セットアップ (`npm install`) |
+| `make run` | デスクトップアプリを開発モードで起動 |
+| `make test` | テストを一度実行 |
+| `make check` | コミット前チェック（テスト + 型 + Rust） |
+| `make app` | macOS アプリ (.app) をビルド |
+| `make dmg` | 配布用ディスクイメージ (.dmg) をビルド |
+| `make clean` | ビルド成果物を削除 |
+
+ポート 1420 が他のアプリと衝突する場合は `MATOMEMO_DEV_PORT=1430 make run` のように変えられます。
+
+npm スクリプトを直接使うこともできます。
+
 | コマンド | 説明 |
 |---|---|
 | `npm run tauri:dev` | デスクトップアプリを開発モードで起動 |

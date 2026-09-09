@@ -43,8 +43,7 @@ fn write_text_file_atomic(path: String, contents: String) -> Result<(), String> 
 
 /// Space によるパン操作中か。キーリピートを握りつぶす判定に使う。
 #[cfg(target_os = "macos")]
-static PAN_KEY_HELD: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static PAN_KEY_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Space によるパン操作の開始・終了を受け取る。
 ///
@@ -96,24 +95,19 @@ fn install_space_repeat_filter() {
     /// Space のキーコード (kVK_Space)。
     const SPACE_KEY_CODE: u16 = 49;
 
-    let handler = block2::RcBlock::new(
-        |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
-            let key = unsafe { event.as_ref() };
-            let swallow = PAN_KEY_HELD.load(std::sync::atomic::Ordering::Relaxed)
-                && key.isARepeat()
-                && key.keyCode() == SPACE_KEY_CODE;
-            if swallow {
-                std::ptr::null_mut()
-            } else {
-                event.as_ptr()
-            }
-        },
-    );
+    let handler = block2::RcBlock::new(|event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+        let key = unsafe { event.as_ref() };
+        let swallow = PAN_KEY_HELD.load(std::sync::atomic::Ordering::Relaxed)
+            && key.isARepeat()
+            && key.keyCode() == SPACE_KEY_CODE;
+        if swallow {
+            std::ptr::null_mut()
+        } else {
+            event.as_ptr()
+        }
+    });
     let monitor = unsafe {
-        NSEvent::addLocalMonitorForEventsMatchingMask_handler(
-            NSEventMask::KeyDown,
-            &handler,
-        )
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &handler)
     };
     // モニタとハンドラはアプリと同じ寿命なので、解放せずに保持し続ける
     std::mem::forget(monitor);

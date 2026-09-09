@@ -5,6 +5,11 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// dev サーバのポート。1420 は Tauri テンプレートの既定値で他アプリと
+// 衝突しやすいため、環境変数で変えられるようにする（make run 参照）。
+// @ts-expect-error process is a nodejs global
+const devPort = Number(process.env.MATOMEMO_DEV_PORT ?? 1420);
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -14,10 +19,10 @@ export default defineConfig({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: devPort,
     strictPort: true,
     host: host || false,
-    hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+    hmr: host ? { protocol: "ws", host, port: devPort + 1 } : undefined,
     // 3. tell Vite to ignore watching `src-tauri`
     watch: { ignored: ["**/src-tauri/**"] },
   },
