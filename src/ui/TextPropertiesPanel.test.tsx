@@ -115,7 +115,55 @@ describe("TextPropertiesPanel: テキストの配置", () => {
       createStickyNote({ id: "s", x: 0, y: 0 }),
     );
     expect(fontSelect).toBeInTheDocument();
+    // 新しい付箋の文字の大きさは自動
+    expect(sizeSelect.value).toBe("auto");
+  });
+
+  it("固定の付箋はその大きさを選んだ状態にする", () => {
+    const { sizeSelect } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0, fontSizeMode: "fixed" }),
+    );
     expect(sizeSelect.value).toBe("16");
+  });
+
+  it("大きさを選ぶと固定に切り替える", () => {
+    const { sizeSelect, onChange } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0 }),
+    );
+    fireEvent.change(sizeSelect, { target: { value: "32" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ fontSize: 32, fontSizeMode: "fixed" }),
+    );
+  });
+
+  it("自動を選ぶと自動に戻す", () => {
+    const { sizeSelect, onChange } = renderPanel(
+      createStickyNote({ id: "s", x: 0, y: 0, fontSizeMode: "fixed" }),
+    );
+    fireEvent.change(sizeSelect, { target: { value: "auto" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ fontSizeMode: "auto" }),
+    );
+  });
+
+  it("図形でも自動を選べる", () => {
+    const { sizeSelect } = renderPanel(
+      createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    );
+    // 図形は既定では固定
+    expect(sizeSelect.value).toBe("16");
+    expect(
+      Array.from(sizeSelect.options).map((option) => option.value),
+    ).toContain("auto");
+  });
+
+  it("単体テキストには自動の選択肢を出さない", () => {
+    const { sizeSelect } = renderPanel(
+      createText({ id: "t", x: 0, y: 0 }),
+    );
+    expect(
+      Array.from(sizeSelect.options).map((option) => option.value),
+    ).not.toContain("auto");
   });
 
   it("付箋のフォントを変えると更新後のアイテムを通知する", () => {

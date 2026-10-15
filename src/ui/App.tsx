@@ -4,6 +4,7 @@ import {
   createShape,
   createStickyNote,
   createText,
+  type AnchorSide,
   type Item,
   type ConnectorKind,
   type ItemId,
@@ -44,7 +45,7 @@ import { BoardCanvas, type ContextMenuTarget } from "./BoardCanvas";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { isEditableTarget } from "./editableTarget";
 import { ConnectorPropertiesPanel } from "./ConnectorPropertiesPanel";
-import { ContextMenu } from "./ContextMenu";
+import { ContextMenu, type ContextMenuAction } from "./ContextMenu";
 import { FileBar } from "./FileBar";
 import { ShapePropertiesPanel } from "./ShapePropertiesPanel";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
@@ -57,6 +58,32 @@ const ZOOM_STEP = 1.25;
 
 /** 自動保存の間隔 (ms)。 */
 export const AUTOSAVE_INTERVAL_MS = 30_000;
+
+/** 編集の操作。 */
+type EditCommand = "copy" | "cut" | "paste" | "duplicate" | "selectAll";
+
+/** Command と組み合わせるキーと、編集の操作の対応。 */
+const EDIT_KEYS: Readonly<Record<string, EditCommand>> = {
+  c: "copy",
+  x: "cut",
+  v: "paste",
+  d: "duplicate",
+  a: "selectAll",
+};
+
+/** 矢印キーと、アイテムを動かす向きの対応。 */
+const ARROW_DIRECTIONS: Readonly<
+  Record<string, { readonly x: number; readonly y: number }>
+> = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
+
+/** 矢印キー 1 回で動かす量（ワールド px）。Shift 併用で大きく動かす。 */
+const NUDGE_SMALL = 1;
+const NUDGE_LARGE = 10;
 
 /** 同じ場所に重ねて追加しないための階段状のずらし幅。 */
 const CASCADE_OFFSET = 24;
@@ -157,6 +184,12 @@ export function App({
   const sendSelectedBackward = store((state) => state.sendSelectedBackward);
   const replaceItem = store((state) => state.replaceItem);
   const resizeItem = store((state) => state.resizeItem);
+  const clipboard = store((state) => state.clipboard);
+  const copySelected = store((state) => state.copySelected);
+  const cutSelected = store((state) => state.cutSelected);
+  const paste = store((state) => state.paste);
+  const duplicateSelected = store((state) => state.duplicateSelected);
+  const selectAll = store((state) => state.selectAll);
 
   /** 編集中のアイテム。null なら編集していない。 */
   const [editingId, setEditingId] = useState<ItemId | null>(null);
@@ -164,13 +197,18 @@ export function App({
   const [error, setError] = useState<string | null>(null);
   /** 右クリックメニューの状態。null なら出していない。 */
   const [menu, setMenu] = useState<{
-    readonly target: ContextMenuTarget;
+    /** 右クリックした対象。canvas はアイテムも線も無い空白部分。 */
+    readonly target: ContextMenuTarget | { readonly kind: "canvas" };
     readonly position: { x: number; y: number };
   } | null>(null);
   /** コネクタを引くモードか。 */
   const [connectMode, setConnectMode] = useState(false);
   /** 接続の始点として選ばれたアイテム。 */
   const [connectingFrom, setConnectingFrom] = useState<ItemId | null>(null);
+  /** 始点の接続ポイント。接続ポイントのそばを押して始めたときだけ持つ。 */
+  const [connectingFromSide, setConnectingFromSide] = useState<
+    AnchorSide | undefined
+  >(undefined);
   /** これから引くコネクタの種類。 */
   const [connectorKind, setConnectorKind] = useState<ConnectorKind>("straight");
   /** これから引くコネクタに付ける矢印。 */
@@ -387,9 +425,6 @@ export function App({
   /** ボード全体を SVG 画像として書き出す。 */
   const handleExportSvg = useCallback(() => {
     const svg = boardToSvg(board, images);
-    if (svg === null) {
-      return;
-    }
     setError(null);
     setBusy(true);
     void (async () => {
@@ -411,6 +446,7 @@ export function App({
   const handleExportPng = useCallback(() => {
     const canvas = document.createElement("canvas");
     if (!drawBoardForPng(board, images, canvas)) {
+      setError("PNG を作れませんでした。");
       return;
     }
     setError(null);
@@ -491,8 +527,10 @@ export function App({
 
   const handleContextMenu = useCallback(
     (target: ContextMenuTarget | null, position: { x: number; y: number }) => {
+      // 空白部分では、貼り付けと全選択だけを出す
       if (target === null) {
-        setMenu(null);
+        setEditingId(null);
+        setMenu({ target: { kind: "canvas" }, position });
         return;
       }
       // 未選択のアイテムを右クリックしたら、そのアイテムを対象にする
@@ -507,24 +545,32 @@ export function App({
 
   /** 接続モードでアイテムが選ばれたときの処理。 */
   const handlePickForConnection = useCallback(
-    (id: ItemId) => {
+    (id: ItemId, side?: AnchorSide) => {
       // 状態更新関数の中でストアを触らない。React は更新関数をレンダリング中に
       // 呼ぶことがあり、その中で別のコンポーネントを更新すると警告になるうえ、
       // 二重に呼ばれてコネクタが重複して作られる恐れがある。
       if (connectingFrom === null) {
         setConnectingFrom(id);
+        setConnectingFromSide(side);
         return;
       }
-      const created = connectItems(connectingFrom, id, connectorKind, {
-        start:
-          connectorArrows === "start" || connectorArrows === "both"
-            ? "arrow"
-            : "none",
-        end:
-          connectorArrows === "end" || connectorArrows === "both"
-            ? "arrow"
-            : "none",
-      });
+      const created = connectItems(
+        connectingFrom,
+        id,
+        connectorKind,
+        {
+          start:
+            connectorArrows === "start" || connectorArrows === "both"
+              ? "arrow"
+              : "none",
+          end:
+            connectorArrows === "end" || connectorArrows === "both"
+              ? "arrow"
+              : "none",
+        },
+        // 接続ポイントのそばを押した端は、その辺につなぐ
+        { from: connectingFromSide, to: side },
+      );
       // 線が引けたら接続モードを終える。続けて引きたい場合より
       // 1 本つないで通常の操作に戻りたい場合のほうが多い。
       // 引けなかった場合（重複など）は、始点を選び直せるようモードを保つ。
@@ -533,8 +579,16 @@ export function App({
         clearSelection();
       }
       setConnectingFrom(null);
+      setConnectingFromSide(undefined);
     },
-    [clearSelection, connectItems, connectingFrom, connectorArrows, connectorKind],
+    [
+      clearSelection,
+      connectItems,
+      connectingFrom,
+      connectingFromSide,
+      connectorArrows,
+      connectorKind,
+    ],
   );
 
   /**
@@ -551,6 +605,8 @@ export function App({
         ? ([...selectedIds][0] as ItemId)
         : null,
     );
+    // 選んでいたアイテムを始点にするときは、接続ポイントは自動
+    setConnectingFromSide(undefined);
     if (!entering) {
       clearSelection();
     }
@@ -671,6 +727,58 @@ export function App({
     };
   }, [closeGuard]);
 
+  /**
+   * 編集の操作（コピー・カット・ペースト・複製・すべてを選択）。
+   * キーボードと右クリックのメニューで同じものを使う。
+   */
+  const runEditCommand = useCallback(
+    (command: EditCommand) => {
+      setMenu(null);
+      setEditingId(null);
+      switch (command) {
+        case "copy":
+          copySelected();
+          return;
+        case "cut":
+          cutSelected();
+          return;
+        case "paste":
+          paste();
+          return;
+        case "duplicate":
+          duplicateSelected();
+          return;
+        default:
+          selectAll();
+      }
+    },
+    [copySelected, cutSelected, duplicateSelected, paste, selectAll],
+  );
+
+  // 矢印キーで選択中のアイテムを少しずつ動かす。Shift を押すと大きく動かす。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const direction = ARROW_DIRECTIONS[event.key];
+      if (
+        direction === undefined ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        // 文字入力欄・選択欄では、矢印はその欄の操作に使う
+        isEditableTarget(event.target) ||
+        event.target instanceof HTMLSelectElement ||
+        selectedIds.size === 0
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const step = event.shiftKey ? NUDGE_LARGE : NUDGE_SMALL;
+      moveSelected(direction.x * step, direction.y * step);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [moveSelected, selectedIds]);
+
   // Command + S / O / N のキーボード操作。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -701,6 +809,16 @@ export function App({
         requestAction(key === "o" ? "open" : "new");
         return;
       }
+      const command = EDIT_KEYS[key];
+      if (command !== undefined && !event.shiftKey) {
+        // 文字入力中は、入力欄自身のコピー・ペーストや全選択に任せる
+        if (isEditableTarget(event.target)) {
+          return;
+        }
+        event.preventDefault();
+        runEditCommand(command);
+        return;
+      }
       if (key === "z") {
         // 文字入力中は入力欄自身の取り消しに任せる。ボード全体を戻すと、
         // 編集の途中でアイテムごと消えることがある。
@@ -717,7 +835,15 @@ export function App({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, handleSave, handleSaveAs, redo, requestAction, undo]);
+  }, [
+    busy,
+    handleSave,
+    handleSaveAs,
+    redo,
+    requestAction,
+    runEditCommand,
+    undo,
+  ]);
 
   // Canvas 外（ツールバーや余白など）にファイルが落とされたときに、
   // ブラウザ（WebKit）がファイルを開いて画面遷移してしまわないよう、
@@ -733,6 +859,113 @@ export function App({
       window.removeEventListener("drop", preventDefault);
     };
   }, []);
+
+  /** 右クリックしたものに応じたメニューの項目。 */
+  const contextMenuActions = (
+    target: ContextMenuTarget | { readonly kind: "canvas" },
+  ): readonly ContextMenuAction[] => {
+    if (target.kind === "canvas") {
+      return [
+        {
+          label: "ペースト",
+          onSelect: () => runEditCommand("paste"),
+          // 何もコピーしていなければ貼るものが無い
+          disabled: clipboard === null,
+        },
+        {
+          label: "すべてを選択",
+          onSelect: () => runEditCommand("selectAll"),
+          disabled: board.items.length === 0,
+        },
+      ];
+    }
+    if (target.kind === "connector") {
+      const { id } = target;
+      return [
+        {
+          label: "始点の矢印を切り替え",
+          onSelect: () => toggleConnectorArrow(id, "from"),
+        },
+        {
+          label: "終点の矢印を切り替え",
+          onSelect: () => toggleConnectorArrow(id, "to"),
+        },
+        {
+          label: "線を削除",
+          onSelect: () => removeConnector(id),
+        },
+      ];
+    }
+    return [
+      { label: "コピー", onSelect: () => runEditCommand("copy") },
+      { label: "カット", onSelect: () => runEditCommand("cut") },
+      { label: "複製", onSelect: () => runEditCommand("duplicate") },
+      { label: "最前面へ移動", onSelect: bringSelectedToFront },
+      { label: "一つ手前へ", onSelect: bringSelectedForward },
+      { label: "一つ奥へ", onSelect: sendSelectedBackward },
+      { label: "最背面へ移動", onSelect: sendSelectedToBack },
+      // 整列は 2 つ以上を選んでいるときだけ意味がある
+      ...(selectedIds.size >= 2
+        ? [
+            {
+              label: "左揃え",
+              onSelect: () => alignSelected("left"),
+            },
+            {
+              label: "左右中央揃え",
+              onSelect: () => alignSelected("centerX"),
+            },
+            {
+              label: "右揃え",
+              onSelect: () => alignSelected("right"),
+            },
+            {
+              label: "上揃え",
+              onSelect: () => alignSelected("top"),
+            },
+            {
+              label: "上下中央揃え",
+              onSelect: () => alignSelected("middle"),
+            },
+            {
+              label: "下揃え",
+              onSelect: () => alignSelected("bottom"),
+            },
+          ]
+        : []),
+      // 等間隔は 3 つ以上ないとすき間をそろえられない
+      ...(selectedIds.size >= 3
+        ? [
+            {
+              label: "横に等間隔",
+              onSelect: () => distributeSelected("horizontal"),
+            },
+            {
+              label: "縦に等間隔",
+              onSelect: () => distributeSelected("vertical"),
+            },
+          ]
+        : []),
+      // 直線は対角線として描くため、向きの反転だけメニューで行う
+      ...(soleSelected?.type === "shape" &&
+      soleSelected.shape === "line"
+        ? [
+            {
+              label: "線の向きを反転",
+              onSelect: () =>
+                replaceItem({
+                  ...soleSelected,
+                  lineDirection:
+                    soleSelected.lineDirection === "up"
+                      ? "down"
+                      : "up",
+                }),
+            },
+          ]
+        : []),
+      { label: "削除", onSelect: removeSelected },
+    ];
+  };
 
   const zoomPercent = Math.round(clampScale(viewport.scale) * 100);
 
@@ -830,89 +1063,7 @@ export function App({
         <ContextMenu
           position={menu.position}
           onClose={() => setMenu(null)}
-          actions={
-            menu.target.kind === "connector"
-              ? [
-                  {
-                    label: "始点の矢印を切り替え",
-                    onSelect: () => toggleConnectorArrow(menu.target.id, "from"),
-                  },
-                  {
-                    label: "終点の矢印を切り替え",
-                    onSelect: () => toggleConnectorArrow(menu.target.id, "to"),
-                  },
-                  {
-                    label: "線を削除",
-                    onSelect: () => removeConnector(menu.target.id),
-                  },
-                ]
-              : [
-                  { label: "最前面へ移動", onSelect: bringSelectedToFront },
-                  { label: "一つ手前へ", onSelect: bringSelectedForward },
-                  { label: "一つ奥へ", onSelect: sendSelectedBackward },
-                  { label: "最背面へ移動", onSelect: sendSelectedToBack },
-                  // 整列は 2 つ以上を選んでいるときだけ意味がある
-                  ...(selectedIds.size >= 2
-                    ? [
-                        {
-                          label: "左揃え",
-                          onSelect: () => alignSelected("left"),
-                        },
-                        {
-                          label: "左右中央揃え",
-                          onSelect: () => alignSelected("centerX"),
-                        },
-                        {
-                          label: "右揃え",
-                          onSelect: () => alignSelected("right"),
-                        },
-                        {
-                          label: "上揃え",
-                          onSelect: () => alignSelected("top"),
-                        },
-                        {
-                          label: "上下中央揃え",
-                          onSelect: () => alignSelected("middle"),
-                        },
-                        {
-                          label: "下揃え",
-                          onSelect: () => alignSelected("bottom"),
-                        },
-                      ]
-                    : []),
-                  // 等間隔は 3 つ以上ないとすき間をそろえられない
-                  ...(selectedIds.size >= 3
-                    ? [
-                        {
-                          label: "横に等間隔",
-                          onSelect: () => distributeSelected("horizontal"),
-                        },
-                        {
-                          label: "縦に等間隔",
-                          onSelect: () => distributeSelected("vertical"),
-                        },
-                      ]
-                    : []),
-                  // 直線は対角線として描くため、向きの反転だけメニューで行う
-                  ...(soleSelected?.type === "shape" &&
-                  soleSelected.shape === "line"
-                    ? [
-                        {
-                          label: "線の向きを反転",
-                          onSelect: () =>
-                            replaceItem({
-                              ...soleSelected,
-                              lineDirection:
-                                soleSelected.lineDirection === "up"
-                                  ? "down"
-                                  : "up",
-                            }),
-                        },
-                      ]
-                    : []),
-                  { label: "削除", onSelect: removeSelected },
-                ]
-          }
+          actions={contextMenuActions(menu.target)}
         />
       )}
 

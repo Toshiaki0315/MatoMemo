@@ -91,6 +91,15 @@ export interface TextStyle {
   readonly fontSize: number;
 }
 
+/**
+ * 付箋・図形の文字の大きさの決め方。
+ *
+ * auto は枠の大きさと文章の量に合わせて、枠に収まる最大の大きさにする。
+ * fixed は `fontSize` をそのまま使う。
+ */
+export const FONT_SIZE_MODES = ["auto", "fixed"] as const;
+export type FontSizeMode = (typeof FONT_SIZE_MODES)[number];
+
 /** 既定のボード名。 */
 export const DEFAULT_BOARD_NAME = "無題のボード";
 
@@ -129,6 +138,11 @@ export interface StickyNoteItem extends ItemBase, TextAlignment, TextStyle {
   readonly type: "sticky";
   readonly text: string;
   readonly color: StickyColor;
+  /**
+   * 文字の大きさの決め方。新しく作る付箋は auto。
+   * 省略時（この設定が無かった頃のファイル）は fixed として扱い、見た目を変えない。
+   */
+  readonly fontSizeMode?: FontSizeMode;
 }
 
 /** 図形（矩形・円）。テキストを内包できる。 */
@@ -144,6 +158,8 @@ export interface ShapeItem
   readonly fill: string | null;
   /** 直線の向き。直線 (`shape: "line"`) だけが持ち、省略時は down。 */
   readonly lineDirection?: LineDirection;
+  /** 文字の大きさの決め方。省略時は fixed。 */
+  readonly fontSizeMode?: FontSizeMode;
 }
 
 /** 単体のテキスト。 */
@@ -185,7 +201,17 @@ export interface Connector extends StrokeSettings {
    * 折れ線以外の種類では使わない。
    */
   readonly bend: number;
+  /**
+   * 始点・終点をつなぐアイテムの辺（接続ポイント）。
+   * 省略時は自動で、2 つのアイテムの位置関係から向かい合う辺を選ぶ。
+   */
+  readonly fromSide?: AnchorSide;
+  readonly toSide?: AnchorSide;
 }
+
+/** 線をつなぐ辺。辺の中点が接続ポイントになる。 */
+export const ANCHOR_SIDES = ["top", "right", "bottom", "left"] as const;
+export type AnchorSide = (typeof ANCHOR_SIDES)[number];
 
 /** 折れ線の中間の線の既定の位置（ちょうど真ん中）。 */
 export const DEFAULT_BEND = 0.5;
@@ -274,6 +300,7 @@ export function createStickyNote(
     TextStyleParams & {
       readonly text?: string;
       readonly color?: StickyColor;
+      readonly fontSizeMode?: FontSizeMode;
     },
 ): StickyNoteItem {
   return {
@@ -285,6 +312,8 @@ export function createStickyNote(
     height: params.height ?? DEFAULT_STICKY_SIZE,
     text: params.text ?? "",
     color: params.color ?? "yellow",
+    // 付箋は大きさを変えて使うことが多いので、文字も枠に合わせて変える
+    fontSizeMode: params.fontSizeMode ?? "auto",
     ...textSettingsOf(params, BOXED_TEXT_DEFAULTS),
   };
 }
@@ -306,6 +335,7 @@ export function createShape(
       readonly text?: string;
       readonly fill?: string | null;
       readonly lineDirection?: LineDirection;
+      readonly fontSizeMode?: FontSizeMode;
     },
 ): ShapeItem {
   const isLine = params.shape === "line";
@@ -329,6 +359,10 @@ export function createShape(
     strokeWidth: params.strokeWidth ?? DEFAULT_STROKE.strokeWidth,
     strokeStyle: params.strokeStyle ?? DEFAULT_STROKE.strokeStyle,
     ...(isLine ? { lineDirection: params.lineDirection ?? "down" } : {}),
+    // 図形の文字は既定では固定。必要なら設定で自動に切り替える
+    ...(params.fontSizeMode !== undefined
+      ? { fontSizeMode: params.fontSizeMode }
+      : {}),
     ...textSettingsOf(params, BOXED_TEXT_DEFAULTS),
   };
 }
@@ -417,6 +451,8 @@ export function createConnector(params: {
   readonly strokeWidth?: number;
   readonly strokeStyle?: StrokeStyle;
   readonly bend?: number;
+  readonly fromSide?: AnchorSide;
+  readonly toSide?: AnchorSide;
 }): Connector {
   return {
     id: params.id,
@@ -429,5 +465,33 @@ export function createConnector(params: {
     strokeWidth: params.strokeWidth ?? DEFAULT_CONNECTOR_STROKE.strokeWidth,
     strokeStyle: params.strokeStyle ?? DEFAULT_CONNECTOR_STROKE.strokeStyle,
     bend: params.bend ?? DEFAULT_BEND,
+    // 接続ポイントは指定したときだけ持つ（無ければ自動）
+    ...(params.fromSide !== undefined ? { fromSide: params.fromSide } : {}),
+    ...(params.toSide !== undefined ? { toSide: params.toSide } : {}),
   };
+}
+
+/** コネクタの片方の端。 */
+export type ConnectorEndName = "from" | "to";
+
+/**
+ * コネクタの片方の端を、指定したアイテムの指定した辺につなぎ直す。
+ * @param side 接続ポイント。undefined なら自動
+ */
+export function attachConnectorEnd(
+  connector: Connector,
+  end: ConnectorEndName,
+  itemId: ItemId,
+  side: AnchorSide | undefined,
+): Connector {
+  if (end === "from") {
+    const { fromSide: _previous, ...rest } = connector;
+    return side === undefined
+      ? { ...rest, fromItemId: itemId }
+      : { ...rest, fromItemId: itemId, fromSide: side };
+  }
+  const { toSide: _previous, ...rest } = connector;
+  return side === undefined
+    ? { ...rest, toItemId: itemId }
+    : { ...rest, toItemId: itemId, toSide: side };
 }

@@ -10,6 +10,7 @@
  */
 
 import {
+  ANCHOR_SIDES,
   BOXED_TEXT_DEFAULTS,
   clampBend,
   DEFAULT_BEND,
@@ -18,6 +19,7 @@ import {
   DEFAULT_STROKE,
   CAP_SIZES,
   END_CAPS,
+  FONT_SIZE_MODES,
   LINE_DIRECTIONS,
   SHAPE_KINDS,
   STANDALONE_TEXT_DEFAULTS,
@@ -25,9 +27,11 @@ import {
   STROKE_STYLES,
   TEXT_ALIGNS,
   TEXT_VERTICAL_ALIGNS,
+  type AnchorSide,
   type Board,
   type Connector,
   type ConnectorKind,
+  type FontSizeMode,
   type Item,
   type LineDirection,
   type ShapeKind,
@@ -237,6 +241,32 @@ function readTextSettings(
   };
 }
 
+/**
+ * 文字の大きさの決め方を読み出す。
+ *
+ * この設定が無かった頃のファイルには項目が無い。そのときは項目ごと
+ * 省き、固定の大きさとして扱う（保存したときの見た目を変えないため）。
+ */
+function readFontSizeMode(
+  source: Record<string, unknown>,
+  path: string,
+  issues: Issues,
+): { readonly fontSizeMode?: FontSizeMode } {
+  if (source["fontSizeMode"] === undefined) {
+    return {};
+  }
+  return {
+    fontSizeMode: readEnum<FontSizeMode>(
+      source,
+      "fontSizeMode",
+      FONT_SIZE_MODES,
+      "fixed",
+      path,
+      issues,
+    ),
+  };
+}
+
 /** 1 件のアイテムを検証する。復元できない場合は null を返す。 */
 function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
   if (!isRecord(raw)) {
@@ -259,6 +289,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
         ...readTextSettings(raw, BOXED_TEXT_DEFAULTS, path, issues),
         type: "sticky",
         text: readString(raw, "text", path, issues),
+        ...readFontSizeMode(raw, path, issues),
         color: readEnum<StickyColor>(
           raw,
           "color",
@@ -284,6 +315,7 @@ function parseItem(raw: unknown, path: string, issues: Issues): Item | null {
           issues,
         ),
         text: readString(raw, "text", path, issues),
+        ...readFontSizeMode(raw, path, issues),
         // 直線の向きは直線だけが持つ。無ければ左上→右下とする。
         ...(raw["shape"] === "line"
           ? {
@@ -359,7 +391,31 @@ function parseConnector(
       raw["bend"] === undefined
         ? DEFAULT_BEND
         : clampBend(readNumber(raw, "bend", path, issues)),
+    // 接続ポイントは後から加わった項目。無ければ自動のまま
+    ...readAnchorSide(raw, "fromSide", path, issues),
+    ...readAnchorSide(raw, "toSide", path, issues),
   };
+}
+
+/** 接続ポイントを読み出す。項目が無ければ省く（自動）。 */
+function readAnchorSide<K extends "fromSide" | "toSide">(
+  source: Record<string, unknown>,
+  key: K,
+  path: string,
+  issues: Issues,
+): Partial<Record<K, AnchorSide>> {
+  if (source[key] === undefined) {
+    return {};
+  }
+  const side = readEnum<AnchorSide>(
+    source,
+    key,
+    ANCHOR_SIDES,
+    "top",
+    path,
+    issues,
+  );
+  return { [key]: side } as Partial<Record<K, AnchorSide>>;
 }
 
 /**

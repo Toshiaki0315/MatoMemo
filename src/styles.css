@@ -170,8 +170,10 @@ body,
   position: absolute;
   display: flex;
   justify-content: center;
-  /* 編集中であることが空のままでも分かるよう枠を出す */
-  border: 2px solid var(--toolbar-active);
+  /* 編集中であることが空のままでも分かるよう枠を出す。border にすると
+     その太さの分だけ文字の幅が狭まり、Canvas と折り返し位置がずれるので
+     場所を取らない outline で描く */
+  outline: 2px solid var(--toolbar-active);
   border-radius: 6px;
   pointer-events: auto;
 }

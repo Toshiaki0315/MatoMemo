@@ -5,8 +5,14 @@
  * 状態を持たない。呼び出し側が毎フレーム全体を描き直す。
  */
 
-import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
-import { connectorPath } from "../domain/connectorPath";
+import type {
+  AnchorSide,
+  Board,
+  ConnectorId,
+  Item,
+  ItemId,
+} from "../domain/board";
+import { anchorPoints, pathOfConnector } from "../domain/connectorPath";
 import type { Rect } from "../domain/geometry";
 import type { Viewport } from "../domain/viewport";
 import { computeGridLines } from "./grid";
@@ -56,6 +62,10 @@ export interface RenderBoardOptions {
   /** 描画するコネクタ。アイテムの現在位置から経路を毎回計算する。 */
   readonly connectors?: Board["connectors"];
   readonly selectedConnectorId?: ConnectorId;
+  /** 接続ポイントを出すアイテム。線をつなぐ・つなぎ直す最中に使う。 */
+  readonly anchorItemId?: ItemId;
+  /** 吸い付いている接続ポイントの辺。強調して描く。 */
+  readonly activeAnchorSide?: AnchorSide;
 }
 
 /** グリッド線の太さ (px)。ズームしても一定にするため画面座標で描く。 */
@@ -130,6 +140,7 @@ function drawItems(
   }
 
   drawSelectionRect(ctx, options);
+  drawAnchorHint(ctx, options, items);
 
   // 選択枠はすべてのアイテムより前面に描く
   const selectedIds = options.selectedIds;
@@ -148,6 +159,36 @@ function drawItems(
 
   ctx.restore();
 }
+
+/**
+ * 線をつなぐ先のアイテムに接続ポイントを描く。
+ * 吸い付いている点は塗りつぶして、どこにつながるかを示す。
+ */
+function drawAnchorHint(
+  ctx: CanvasRenderingContext2D,
+  options: RenderBoardOptions,
+  items: readonly Item[],
+): void {
+  const item = items.find((candidate) => candidate.id === options.anchorItemId);
+  if (item === undefined) {
+    return;
+  }
+  const scale = options.viewport.scale;
+  const radius = ANCHOR_POINT_RADIUS / scale;
+  ctx.lineWidth = 2 / scale;
+  ctx.strokeStyle = SELECTION_COLOR;
+  for (const { side, point } of anchorPoints(item)) {
+    const active = side === options.activeAnchorSide;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, active ? radius * 1.4 : radius, 0, Math.PI * 2);
+    ctx.fillStyle = active ? SELECTION_COLOR : "#FFFFFF";
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+/** 接続ポイントの点の半径（画面 px）。 */
+const ANCHOR_POINT_RADIUS = 5;
 
 /** ドラッグ中の選択範囲を描く。 */
 function drawSelectionRect(
@@ -187,7 +228,7 @@ function drawConnectors(
     if (fromItem === undefined || toItem === undefined) {
       continue;
     }
-    const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
+    const path = pathOfConnector(connector, fromItem, toItem);
     const selected = connector.id === options.selectedConnectorId;
     drawConnector(ctx, path, options.viewport.scale, {
       selected,

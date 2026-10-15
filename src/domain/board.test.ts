@@ -7,6 +7,7 @@ import {
   DEFAULT_SHAPE_SIZE,
   DEFAULT_STICKY_SIZE,
   STICKY_COLORS,
+  attachConnectorEnd,
   createBoard,
   createConnector,
   createImage,
@@ -57,7 +58,15 @@ describe("createStickyNote", () => {
       verticalAlign: "middle",
       fontFamily: DEFAULT_FONT_FAMILY,
       fontSize: DEFAULT_ITEM_FONT_SIZE,
+      // 付箋の文字は既定で枠の大きさに合わせる
+      fontSizeMode: "auto",
     });
+  });
+
+  it("文字の大きさを固定にして作れる", () => {
+    expect(
+      createStickyNote({ id: "i1", x: 0, y: 0, fontSizeMode: "fixed" }),
+    ).toMatchObject({ fontSizeMode: "fixed" });
   });
 
   it("色・テキスト・サイズを指定できる", () => {
@@ -100,6 +109,21 @@ describe("createShape: 直線と角丸", () => {
     expect(
       createShape({ id: "i1", shape: "line", x: 0, y: 0, lineDirection: "up" }),
     ).toMatchObject({ lineDirection: "up" });
+  });
+
+  it("図形の文字の大きさは既定で固定、指定すれば自動にできる", () => {
+    expect(
+      "fontSizeMode" in createShape({ id: "r", shape: "rectangle", x: 0, y: 0 }),
+    ).toBe(false);
+    expect(
+      createShape({
+        id: "r",
+        shape: "rectangle",
+        x: 0,
+        y: 0,
+        fontSizeMode: "auto",
+      }),
+    ).toMatchObject({ fontSizeMode: "auto" });
   });
 
   it("直線以外は向きを持たない", () => {
@@ -462,5 +486,58 @@ describe("図形の塗りと枠線", () => {
         strokeStyle: "dotted",
       }),
     ).toMatchObject({ strokeWidth: 5, strokeStyle: "dotted" });
+  });
+});
+
+describe("接続ポイント", () => {
+  it("コネクタは既定では接続ポイントを持たない（自動）", () => {
+    const connector = createConnector({ id: "c", fromItemId: "a", toItemId: "b" });
+    expect("fromSide" in connector).toBe(false);
+    expect("toSide" in connector).toBe(false);
+  });
+
+  it("作るときに接続ポイントを指定できる", () => {
+    expect(
+      createConnector({
+        id: "c",
+        fromItemId: "a",
+        toItemId: "b",
+        fromSide: "top",
+        toSide: "left",
+      }),
+    ).toMatchObject({ fromSide: "top", toSide: "left" });
+  });
+
+  describe("attachConnectorEnd", () => {
+    const connector = createConnector({
+      id: "c",
+      fromItemId: "a",
+      toItemId: "b",
+      fromSide: "top",
+      toSide: "bottom",
+    });
+
+    it("始点をつなぎ直して辺を指定する", () => {
+      expect(attachConnectorEnd(connector, "from", "x", "right")).toMatchObject({
+        fromItemId: "x",
+        fromSide: "right",
+        toSide: "bottom",
+      });
+    });
+
+    it("終点をつなぎ直して辺を指定する", () => {
+      expect(attachConnectorEnd(connector, "to", "y", "left")).toMatchObject({
+        fromSide: "top",
+        toItemId: "y",
+        toSide: "left",
+      });
+    });
+
+    it("辺を指定しなければ自動に戻す", () => {
+      const from = attachConnectorEnd(connector, "from", "a", undefined);
+      expect("fromSide" in from).toBe(false);
+      const to = attachConnectorEnd(connector, "to", "b", undefined);
+      expect("toSide" in to).toBe(false);
+    });
   });
 });

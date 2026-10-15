@@ -880,3 +880,57 @@ describe("画像出力", () => {
     expect(store.getState().isDirty()).toBe(true);
   });
 });
+
+describe("画像出力の失敗", () => {
+  it("SVG を書き出せなかったらメッセージを出す", async () => {
+    fileStore.exportText = async () => {
+      throw new StorageError("書き出せませんでした。");
+    };
+    renderApp();
+    click("黄色の付箋を追加");
+    click("SVG 出力");
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("書き出せませんでした。");
+    });
+  });
+
+  it("PNG を描く Canvas が使えなければメッセージを出す", () => {
+    renderApp();
+    click("黄色の付箋を追加");
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(null);
+    try {
+      click("PNG 出力");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "PNG を作れませんでした。",
+      );
+      expect(fileStore.binaryFiles.size).toBe(0);
+    } finally {
+      getContext.mockRestore();
+    }
+  });
+});
+
+describe("画像出力のキャンセル", () => {
+  it("PNG の書き出し先を選ばなければ何も書かない", async () => {
+    fileStore.exportPath = null;
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
+      callback({
+        arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+      } as Blob);
+    };
+    try {
+      renderApp();
+      click("黄色の付箋を追加");
+      click("PNG 出力");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "PNG 出力" })).toBeEnabled();
+      });
+      expect(fileStore.binaryFiles.size).toBe(0);
+    } finally {
+      HTMLCanvasElement.prototype.toBlob = original;
+    }
+  });
+});

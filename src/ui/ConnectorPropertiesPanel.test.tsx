@@ -107,3 +107,55 @@ describe("ConnectorPropertiesPanel", () => {
     expect(onDelete).toHaveBeenCalled();
   });
 });
+
+describe("ConnectorPropertiesPanel: 接続ポイント", () => {
+  it("既定では両端とも自動", () => {
+    renderPanel();
+    expect((screen.getByLabelText("始点の位置") as HTMLSelectElement).value).toBe(
+      "auto",
+    );
+    expect((screen.getByLabelText("終点の位置") as HTMLSelectElement).value).toBe(
+      "auto",
+    );
+  });
+
+  it("指定した接続ポイントを選んだ状態にする", () => {
+    renderPanel(
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        fromSide: "top",
+        toSide: "left",
+      }),
+    );
+    expect((screen.getByLabelText("始点の位置") as HTMLSelectElement).value).toBe(
+      "top",
+    );
+    expect((screen.getByLabelText("終点の位置") as HTMLSelectElement).value).toBe(
+      "left",
+    );
+  });
+
+  it("始点の位置を選ぶと、つなぐ相手は変えずに辺を変える", () => {
+    const { onChange } = renderPanel();
+    fireEvent.change(screen.getByLabelText("始点の位置"), {
+      target: { value: "bottom" },
+    });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ fromItemId: "a", fromSide: "bottom" }),
+    );
+  });
+
+  it("終点の位置を自動に戻せる", () => {
+    const { onChange } = renderPanel(
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "b", toSide: "top" }),
+    );
+    fireEvent.change(screen.getByLabelText("終点の位置"), {
+      target: { value: "auto" },
+    });
+    const changed = onChange.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(changed["toItemId"]).toBe("b");
+    expect("toSide" in changed).toBe(false);
+  });
+});

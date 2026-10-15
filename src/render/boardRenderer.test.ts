@@ -348,3 +348,50 @@ describe("renderBoard: コネクタ", () => {
     expect(mock.assignmentsTo("strokeStyle")).not.toContain(SELECTION_COLOR);
   });
 });
+
+describe("renderBoard: 接続ポイント", () => {
+  const item = createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 });
+
+  it("指定したアイテムの 4 つの辺の中点に点を描く", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [item],
+      anchorItemId: "a",
+    });
+    const centers = mock.callsOf("arc").map((call) => [call.args[0], call.args[1]]);
+    expect(centers).toEqual([
+      [50, 0],
+      [100, 50],
+      [50, 100],
+      [0, 50],
+    ]);
+  });
+
+  it("吸い付いている点は大きく塗りつぶす", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [item],
+      anchorItemId: "a",
+      activeAnchorSide: "right",
+    });
+    const radii = mock.callsOf("arc").map((call) => call.args[2] as number);
+    // 右（2 番目）だけが大きい
+    expect(radii[1]).toBeGreaterThan(radii[0] ?? 0);
+    expect(mock.assignmentsTo("fillStyle")).toContain(SELECTION_COLOR);
+  });
+
+  it("見つからないアイテムには何も描かない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [item],
+      anchorItemId: "missing",
+    });
+    expect(mock.callsOf("arc")).toEqual([]);
+  });
+});

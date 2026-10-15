@@ -12,9 +12,9 @@
  */
 
 import type { Point } from "../domain/geometry";
+import { approximateTextWidth, type MeasureTextWidth } from "./textMeasure";
 
-/** 文字幅の測定。本物の Canvas の measureText に委譲するための型。 */
-export type MeasureTextWidth = (text: string, font: string) => number;
+export type { MeasureTextWidth } from "./textMeasure";
 
 /** 変換行列 (Canvas の setTransform と同じ並び)。 */
 interface Matrix {
@@ -61,17 +61,6 @@ function parseFont(font: string): { size: number; family: string } {
  */
 const ASCENT_RATIO = 0.8;
 
-/** 文字幅の概算 (px)。測定手段が無い環境の予備。 */
-function approximateWidth(text: string, font: string): number {
-  const { size } = parseFont(font);
-  let width = 0;
-  for (const char of text) {
-    // 全角をおおよそ 1em、半角を 0.55em とみなす
-    width += char.charCodeAt(0) > 0xff ? size : size * 0.55;
-  }
-  return width;
-}
-
 /** XML に埋め込めるように特殊文字を落とす。 */
 function escapeXml(text: string): string {
   return text
@@ -106,7 +95,7 @@ export class SvgContext {
   private readonly elements: string[] = [];
   private readonly measure: MeasureTextWidth;
 
-  constructor(measure: MeasureTextWidth = approximateWidth) {
+  constructor(measure: MeasureTextWidth = approximateTextWidth) {
     this.measure = measure;
   }
 

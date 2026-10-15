@@ -888,7 +888,30 @@ describe("BoardCanvas: 接続モード", () => {
       connectMode: true,
     });
     fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
-    expect(onPickForConnection).toHaveBeenCalledWith("a");
+    // 接続ポイントから離れた場所なので、つなぐ辺は自動
+    expect(onPickForConnection).toHaveBeenCalledWith("a", undefined);
+  });
+
+  it("接続ポイントのそばを押すと、その辺を指定して拾う", () => {
+    const { canvas, onPickForConnection } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    // a は (0,0)-(100,100)。上の辺の中点 (50, 0) のすぐ内側
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 4 });
+    expect(onPickForConnection).toHaveBeenCalledWith("a", "top");
+  });
+
+  it("ポインタの下のアイテムに接続ポイントを出す", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithConnector(),
+      connectMode: true,
+    });
+    canvasStub.mock.calls.length = 0;
+    fireEvent.pointerMove(canvas, { clientX: 50, clientY: 50 });
+    // 4 つの辺の中点に点を描く
+    const arcs = canvasStub.mock.callsOf("arc");
+    expect(arcs.length).toBeGreaterThanOrEqual(4);
   });
 
   it("接続モードでは選択も移動もしない", () => {
@@ -1239,7 +1262,38 @@ describe("BoardCanvas: 線の接続先の付け替え", () => {
     // 終点は (300, 50)。3 枚目の中へ運ぶ
     fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
     fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
-    expect(onReconnect).toHaveBeenCalledWith("c1", "to", "c");
+    expect(onReconnect).toHaveBeenCalledWith("c1", "to", "c", undefined);
+  });
+
+  it("接続ポイントのそばへ運ぶとその辺につなぐ", () => {
+    const { canvas, onReconnect } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    // 3 枚目の左の辺の中点 (600, 50) のすぐ内側へ運ぶ
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 605, clientY: 50 });
+    expect(onReconnect).toHaveBeenLastCalledWith("c1", "to", "c", "left");
+  });
+
+  it("運んでいる間は運び先の接続ポイントを出し、離すと消す", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithThree(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 300, clientY: 50 });
+    canvasStub.mock.calls.length = 0;
+    fireEvent.pointerMove(window, { clientX: 605, clientY: 50 });
+    const whileDragging = canvasStub.mock.callsOf("arc").length;
+    expect(whileDragging).toBeGreaterThanOrEqual(4);
+
+    // アイテムの外へ出ると消える
+    canvasStub.mock.calls.length = 0;
+    fireEvent.pointerMove(window, { clientX: 450, clientY: 400 });
+    const outside = canvasStub.mock.callsOf("arc").length;
+    expect(outside).toBeLessThan(whileDragging);
+
+    fireEvent.pointerUp(window);
   });
 
   it("始点のハンドルも運べる", () => {
@@ -1249,7 +1303,7 @@ describe("BoardCanvas: 線の接続先の付け替え", () => {
     });
     fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 50 });
     fireEvent.pointerMove(window, { clientX: 650, clientY: 50 });
-    expect(onReconnect).toHaveBeenCalledWith("c1", "from", "c");
+    expect(onReconnect).toHaveBeenCalledWith("c1", "from", "c", undefined);
   });
 
   it("アイテムの外へ運んでも繋ぎ替えない", () => {
@@ -1632,5 +1686,33 @@ describe("BoardCanvas: ファイルのドロップ", () => {
     // 既定の動作 (ブラウザが画像を開く) を止めないと drop が来ない
     expect(event.defaultPrevented).toBe(true);
     expect(transfer.dropEffect).toBe("copy");
+  });
+});
+
+describe("BoardCanvas: 接続ポイントの表示の後始末", () => {
+  it("接続モードを抜けたら接続ポイントを消す", () => {
+    const board = addItem(
+      createBoard({ id: "b1" }),
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    const props = {
+      board,
+      viewport: createViewport(),
+      selectedIds: new Set<string>(),
+      onViewportChange: vi.fn(),
+      onSelect: vi.fn(),
+      onSelectMany: vi.fn(),
+      onMoveSelected: vi.fn(),
+      onResizeItem: vi.fn(),
+      onDeleteSelected: vi.fn(),
+    };
+    const view = render(<BoardCanvas {...props} connectMode />);
+    const canvas = screen.getByTestId("board-canvas");
+    fireEvent.pointerMove(canvas, { clientX: 50, clientY: 50 });
+    expect(canvasStub.mock.callsOf("arc").length).toBeGreaterThan(0);
+
+    canvasStub.mock.calls.length = 0;
+    view.rerender(<BoardCanvas {...props} connectMode={false} />);
+    expect(canvasStub.mock.callsOf("arc")).toEqual([]);
   });
 });

@@ -1354,3 +1354,224 @@ describe("コネクタの更新が他に影響しないこと", () => {
     ).toBe(before);
   });
 });
+
+describe("コピー・カット・ペースト", () => {
+  /** 付箋 2 枚を線でつなぎ、両方を選択する。 */
+  function setupConnected() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    store.getState().connectItems(a, b, "straight");
+    store.getState().selectMany([a, b]);
+    return { store, a, b };
+  }
+
+  it("最初は何もコピーしていない", () => {
+    expect(setup().getState().clipboard).toBeNull();
+  });
+
+  it("コピーしてもボードは変わらず、未保存にもならない", () => {
+    const { store } = setupConnected();
+    store.getState().markSaved("/tmp/a.matomemo", store.getState().board);
+    const before = store.getState().board;
+    store.getState().copySelected();
+    expect(store.getState().board).toBe(before);
+    expect(store.getState().isDirty()).toBe(false);
+    expect(store.getState().clipboard?.content.items).toHaveLength(2);
+  });
+
+  it("貼り付けると新しい id で複製し、少しずらして選択する", () => {
+    const { store, a } = setupConnected();
+    store.getState().copySelected();
+    const pasted = store.getState().paste();
+
+    expect(pasted).toHaveLength(2);
+    expect(pasted).not.toContain(a);
+    expect(store.getState().board.items).toHaveLength(4);
+    expect(findItem(store.getState().board, pasted[0] as string)).toMatchObject({
+      x: 24,
+      y: 24,
+    });
+    expect(store.getState().selectedIds).toEqual(new Set(pasted));
+  });
+
+  it("選んだもの同士の線も一緒に貼り付ける", () => {
+    const { store } = setupConnected();
+    store.getState().copySelected();
+    const [first, second] = store.getState().paste();
+    expect(store.getState().board.connectors.at(-1)).toMatchObject({
+      fromItemId: first,
+      toItemId: second,
+    });
+  });
+
+  it("続けて貼り付けるたびにずらす", () => {
+    const { store } = setupConnected();
+    store.getState().copySelected();
+    const first = store.getState().paste();
+    const second = store.getState().paste();
+    expect(findItem(store.getState().board, first[0] as string)?.x).toBe(24);
+    expect(findItem(store.getState().board, second[0] as string)?.x).toBe(48);
+  });
+
+  it("貼り付けは 1 回の取り消しで戻る", () => {
+    const { store } = setupConnected();
+    store.getState().copySelected();
+    store.getState().paste();
+    store.getState().undo();
+    expect(store.getState().board.items).toHaveLength(2);
+    expect(store.getState().board.connectors).toHaveLength(1);
+  });
+
+  it("何もコピーしていなければ貼り付けない", () => {
+    const store = setup();
+    const before = store.getState().board;
+    expect(store.getState().paste()).toEqual([]);
+    expect(store.getState().board).toBe(before);
+  });
+
+  it("何も選んでいないコピーは前にコピーした内容を消さない", () => {
+    const { store } = setupConnected();
+    store.getState().copySelected();
+    store.getState().clearSelection();
+    store.getState().copySelected();
+    expect(store.getState().clipboard).not.toBeNull();
+  });
+
+  it("カットすると消えて、最初の貼り付けは元の位置に戻る", () => {
+    const { store } = setupConnected();
+    store.getState().cutSelected();
+    expect(store.getState().board.items).toEqual([]);
+    expect(store.getState().board.connectors).toEqual([]);
+    expect(store.getState().selectedIds.size).toBe(0);
+
+    const pasted = store.getState().paste();
+    expect(findItem(store.getState().board, pasted[0] as string)).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+  });
+
+  it("カットは 1 回の取り消しで戻る", () => {
+    const { store } = setupConnected();
+    store.getState().cutSelected();
+    store.getState().undo();
+    expect(store.getState().board.items).toHaveLength(2);
+  });
+
+  it("何も選んでいなければカットしない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().clearSelection();
+    const before = store.getState().board;
+    store.getState().cutSelected();
+    expect(store.getState().board).toBe(before);
+    expect(store.getState().clipboard).toBeNull();
+  });
+
+  it("新規にしてもコピーした内容は残り、別のボードへ貼り付けられる", () => {
+    const { store } = setupConnected();
+    store.getState().copySelected();
+    store.getState().newBoard();
+    expect(store.getState().paste()).toHaveLength(2);
+  });
+});
+
+describe("複製", () => {
+  it("選んだものを少しずらして複製し、複製したものを選ぶ", () => {
+    const store = setup();
+    const a = addSticky(store, 10, 10);
+    const duplicated = store.getState().duplicateSelected();
+    expect(duplicated).toHaveLength(1);
+    expect(findItem(store.getState().board, duplicated[0] as string)).toMatchObject({
+      x: 34,
+      y: 34,
+    });
+    expect(store.getState().selectedIds).toEqual(new Set(duplicated));
+    expect(findItem(store.getState().board, a)).toMatchObject({ x: 10 });
+  });
+
+  it("クリップボードは変えない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().duplicateSelected();
+    expect(store.getState().clipboard).toBeNull();
+  });
+
+  it("何も選んでいなければ複製しない", () => {
+    const store = setup();
+    addSticky(store, 0, 0);
+    store.getState().clearSelection();
+    expect(store.getState().duplicateSelected()).toEqual([]);
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+});
+
+describe("すべてを選択", () => {
+  it("すべてのアイテムを選び、線の選択は外す", () => {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const connector = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().selectConnector(connector);
+    store.getState().selectAll();
+    expect(store.getState().selectedIds).toEqual(new Set([a, b]));
+    expect(store.getState().selectedConnectorId).toBeNull();
+  });
+});
+
+describe("接続ポイントの指定", () => {
+  function setupPair() {
+    const store = setup();
+    const a = addSticky(store, 0, 0);
+    const b = addSticky(store, 300, 0);
+    const c = addSticky(store, 600, 0);
+    return { store, a, b, c };
+  }
+
+  it("つなぐときに接続ポイントを指定できる", () => {
+    const { store, a, b } = setupPair();
+    store
+      .getState()
+      .connectItems(a, b, "polyline", {}, { from: "bottom", to: "top" });
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromSide: "bottom",
+      toSide: "top",
+    });
+  });
+
+  it("指定しなければ自動のまま", () => {
+    const { store, a, b } = setupPair();
+    store.getState().connectItems(a, b, "straight", {}, { from: undefined });
+    expect("fromSide" in (store.getState().board.connectors[0] ?? {})).toBe(false);
+  });
+
+  it("つなぎ直すときに接続ポイントを指定できる", () => {
+    const { store, a, b, c } = setupPair();
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().reconnect(id, "to", c, "left");
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      toItemId: c,
+      toSide: "left",
+    });
+  });
+
+  it("同じアイテムのまま接続ポイントだけ変えられる", () => {
+    const { store, a, b } = setupPair();
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().reconnect(id, "from", a, "top");
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromItemId: a,
+      fromSide: "top",
+    });
+  });
+
+  it("変化の無いつなぎ直しでは未保存にしない", () => {
+    const { store, a, b } = setupPair();
+    const id = store.getState().connectItems(a, b, "straight") as string;
+    store.getState().reconnect(id, "to", b, "left");
+    const before = store.getState().board;
+    store.getState().reconnect(id, "to", b, "left");
+    expect(store.getState().board).toBe(before);
+  });
+});

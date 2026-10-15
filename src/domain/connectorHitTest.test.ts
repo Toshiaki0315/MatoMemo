@@ -318,3 +318,30 @@ describe("hitTestConnectorBend", () => {
     ).toBeNull();
   });
 });
+
+describe("hitTestConnectorBend: 接続ポイントを指定した線", () => {
+  it("接続ポイントを指定した折れ線は中間の線を掴めない", () => {
+    let board = createBoard({ id: "b" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 300, y: 200, width: 100, height: 100 }),
+    );
+    board = addConnector(
+      board,
+      createConnector({
+        id: "c1",
+        fromItemId: "a",
+        toItemId: "b",
+        kind: "polyline",
+        fromSide: "right",
+        toSide: "left",
+      }),
+    );
+    // 自動なら掴める位置 (中間の線 x:200)
+    expect(hitTestConnectorBend(board, "c1", { x: 200, y: 150 }, 1)).toBeNull();
+  });
+});

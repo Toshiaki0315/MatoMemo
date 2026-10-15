@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createShape, createStickyNote, createText } from "../domain/board";
 import { createViewport } from "../domain/viewport";
+import { AUTO_FONT_SIZE_MAX } from "../render/boxedText";
+import { approximateTextWidth } from "../render/textMeasure";
 import { ItemTextEditor, type TextEditableItem } from "./ItemTextEditor";
 
 function renderEditor(
@@ -16,6 +18,8 @@ function renderEditor(
       viewport={viewport}
       onChangeText={onChangeText}
       onClose={onClose}
+      // jsdom の Canvas は文字幅を測れないので概算で測る
+      measure={approximateTextWidth}
     />,
   );
   const textarea = screen.getByLabelText(
@@ -135,5 +139,46 @@ describe("ItemTextEditor: 配置", () => {
       { x: 0, y: 0, scale: 2 },
     );
     expect(textarea.style.fontSize).toBe("40px");
+  });
+
+  it("文字の大きさが自動の付箋は、描画と同じ規則で大きさを決める", () => {
+    // 短い文章は上限の大きさになる。編集中に大きさがずれると文字が跳ねて見える
+    const { textarea } = renderEditor(
+      createStickyNote({ id: "s", x: 0, y: 0, text: "メモ" }),
+    );
+    expect(textarea.style.fontSize).toBe(`${AUTO_FONT_SIZE_MAX}px`);
+  });
+
+  it("文字の大きさが固定の付箋は、その大きさを使う", () => {
+    const { textarea } = renderEditor(
+      createStickyNote({
+        id: "s",
+        x: 0,
+        y: 0,
+        text: "メモ",
+        fontSize: 20,
+        fontSizeMode: "fixed",
+      }),
+    );
+    expect(textarea.style.fontSize).toBe("20px");
+  });
+
+  it("測り方を渡さなければ測定用の Canvas で測る", () => {
+    // Canvas が使えない環境では概算に切り替わるので、大きさは決まる
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(null);
+    render(
+      <ItemTextEditor
+        item={createStickyNote({ id: "s", x: 0, y: 0, text: "メモ" })}
+        viewport={createViewport()}
+        onChangeText={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const textarea = screen.getByLabelText("アイテムのテキスト") as HTMLTextAreaElement;
+    expect(textarea.style.fontSize).toMatch(/^\d+px$/);
+    expect(getContext).toHaveBeenCalled();
+    getContext.mockRestore();
   });
 });

@@ -17,9 +17,11 @@ import {
   type DistributeAxis,
 } from "../domain/align";
 import {
+  attachConnectorEnd,
   clampBend,
   createBoard,
   createConnector,
+  type AnchorSide,
   type Board,
   type Connector,
   type ConnectorId,
@@ -36,6 +38,12 @@ import {
   removeItems,
   replaceItem as replaceItemInBoard,
 } from "../domain/boardOps";
+import {
+  copyItems,
+  PASTE_OFFSET,
+  pasteItems,
+  type ClipboardContent,
+} from "../domain/clipboard";
 import { createId as defaultCreateId } from "../domain/ids";
 import { LINE_MIN_SIZE, resizeRect, type ResizeHandle } from "../domain/resize";
 import { createViewport, type Viewport } from "../domain/viewport";
@@ -74,6 +82,17 @@ export interface BoardState {
   readonly future: readonly Board[];
   /** 連続した変更を 1 回の取り消し単位にまとめている最中か。 */
   readonly grouping: boolean;
+  /**
+   * コピー・カットした内容。何もコピーしていなければ null。
+   *
+   * ボードの一部ではないので、取り消しの対象にも未保存の判定にも含めない。
+   * 新規・開くでも消さないので、別のボードへ写すのにも使える。
+   */
+  readonly clipboard: {
+    readonly content: ClipboardContent;
+    /** 次に貼り付けるとき、元の位置から何回分ずらすか。 */
+    readonly nextOffset: number;
+  } | null;
 
   /** 未保存の変更があるか。 */
   isDirty(): boolean;
@@ -128,6 +147,10 @@ export interface BoardState {
     toItemId: ItemId,
     kind: ConnectorKind,
     caps?: { readonly start?: EndCap; readonly end?: EndCap },
+    sides?: {
+      readonly from?: AnchorSide | undefined;
+      readonly to?: AnchorSide | undefined;
+    },
   ): ConnectorId | null;
   /**
    * 既存のコネクタの指定した端の矢印を切り替える。
@@ -138,8 +161,16 @@ export interface BoardState {
   replaceConnector(connector: Connector): void;
   /** 折れ線コネクタの中間の線の位置（始点側 0〜終点側 1）を変える。 */
   bendConnector(id: ConnectorId, bend: number): void;
-  /** コネクタの接続先を付け替える。 */
-  reconnect(id: ConnectorId, end: "from" | "to", itemId: ItemId): void;
+  /**
+   * コネクタの接続先を付け替える。
+   * @param side 接続ポイント。省略時は自動
+   */
+  reconnect(
+    id: ConnectorId,
+    end: "from" | "to",
+    itemId: ItemId,
+    side?: AnchorSide,
+  ): void;
   removeConnector(id: ConnectorId): void;
   /** コネクタを選択する。null なら選択解除。 */
   selectConnector(id: ConnectorId | null): void;
@@ -160,9 +191,24 @@ export interface BoardState {
   selectOnly(id: ItemId): void;
   toggleSelection(id: ItemId): void;
   selectMany(ids: readonly ItemId[]): void;
+  /** すべてのアイテムを選択する。 */
+  selectAll(): void;
   clearSelection(): void;
   /** 選択中のアイテムを重なり順（背面→前面）で返す。 */
   selectedItems(): readonly Item[];
+
+  /** 選択中のアイテムをコピーする。何も選んでいなければ何もしない。 */
+  copySelected(): void;
+  /** 選択中のアイテムをコピーしてから削除する。 */
+  cutSelected(): void;
+  /**
+   * コピーした内容を貼り付け、貼り付けたものを選択する。
+   * 貼り付けるたびに少しずつずらし、完全に重ならないようにする。
+   * @returns 貼り付けたアイテムの id。何もコピーしていなければ空
+   */
+  paste(): readonly ItemId[];
+  /** 選択中のアイテムを少しずらして複製する。クリップボードは変えない。 */
+  duplicateSelected(): readonly ItemId[];
 }
 
 export interface BoardStoreOptions {
@@ -261,6 +307,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       past: [],
       future: [],
       grouping: false,
+      clipboard: null,
 
       isDirty() {
         const { board, savedBoard } = get();
@@ -431,7 +478,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      connectItems(fromItemId, toItemId, kind, caps = {}) {
+      connectItems(fromItemId, toItemId, kind, caps = {}, sides = {}) {
         // 自分自身への接続は線として描けないため作らない
         if (fromItemId === toItemId) {
           return null;
@@ -460,6 +507,8 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
                 kind,
                 startCap: caps.start ?? "none",
                 endCap: caps.end ?? "none",
+                ...(sides.from !== undefined ? { fromSide: sides.from } : {}),
+                ...(sides.to !== undefined ? { toSide: sides.to } : {}),
               }),
             ),
           ),
@@ -501,7 +550,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         });
       },
 
-      reconnect(id, end, itemId) {
+      reconnect(id, end, itemId, side) {
         set((state) => {
           const target = state.board.connectors.find(
             (connector) => connector.id === id,
@@ -509,12 +558,18 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
           if (target === undefined) {
             return state;
           }
-          const next =
-            end === "from"
-              ? { ...target, fromItemId: itemId }
-              : { ...target, toItemId: itemId };
+          const next = attachConnectorEnd(target, end, itemId, side);
           // 同じアイテム同士は線として描けないので付け替えない
           if (next.fromItemId === next.toItemId) {
+            return state;
+          }
+          // ドラッグ中は同じ位置で何度も呼ばれる。変化が無ければ参照を変えない
+          if (
+            next.fromItemId === target.fromItemId &&
+            next.toItemId === target.toItemId &&
+            next.fromSide === target.fromSide &&
+            next.toSide === target.toSide
+          ) {
             return state;
           }
           return withBoard(state, {
@@ -634,6 +689,13 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
         set({ selectedIds: new Set(ids), selectedConnectorId: null });
       },
 
+      selectAll() {
+        set((state) => ({
+          selectedIds: new Set(state.board.items.map((item) => item.id)),
+          selectedConnectorId: null,
+        }));
+      },
+
       clearSelection() {
         set({ selectedIds: new Set<ItemId>(), selectedConnectorId: null });
       },
@@ -641,6 +703,71 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
       selectedItems() {
         const { board, selectedIds } = get();
         return board.items.filter((item) => selectedIds.has(item.id));
+      },
+
+      copySelected() {
+        set((state) => {
+          const content = copyItems(state.board, [...state.selectedIds]);
+          // 何も選んでいないときのコピーで、前にコピーした内容を消さない
+          return content === null
+            ? state
+            : { clipboard: { content, nextOffset: 1 } };
+        });
+      },
+
+      cutSelected() {
+        set((state) => {
+          const content = copyItems(state.board, [...state.selectedIds]);
+          if (content === null) {
+            return state;
+          }
+          return {
+            ...withBoard(
+              state,
+              removeItems(state.board, [...state.selectedIds]),
+            ),
+            selectedIds: new Set<ItemId>(),
+            // 切り取ったものは元の場所から消えているので、最初の
+            // 貼り付けは同じ位置に戻す（ずらすと位置合わせをやり直す手間になる）
+            clipboard: { content, nextOffset: 0 },
+          };
+        });
+      },
+
+      paste() {
+        const state = get();
+        const { clipboard } = state;
+        if (clipboard === null) {
+          return [];
+        }
+        const result = pasteItems(
+          state.board,
+          clipboard.content,
+          clipboard.nextOffset * PASTE_OFFSET,
+          createId,
+        );
+        set({
+          ...withBoard(state, result.board),
+          selectedIds: new Set(result.ids),
+          selectedConnectorId: null,
+          clipboard: { ...clipboard, nextOffset: clipboard.nextOffset + 1 },
+        });
+        return result.ids;
+      },
+
+      duplicateSelected() {
+        const state = get();
+        const content = copyItems(state.board, [...state.selectedIds]);
+        if (content === null) {
+          return [];
+        }
+        const result = pasteItems(state.board, content, PASTE_OFFSET, createId);
+        set({
+          ...withBoard(state, result.board),
+          selectedIds: new Set(result.ids),
+          selectedConnectorId: null,
+        });
+        return result.ids;
       },
     };
   });

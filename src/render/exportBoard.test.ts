@@ -66,8 +66,11 @@ describe("exportRenderOptions", () => {
     expect(options?.selectionRect).toBeUndefined();
   });
 
-  it("アイテムが無ければ null", () => {
-    expect(exportRenderOptions(createBoard({ id: "b" }), new Map())).toBeNull();
+  it("アイテムが無ければ余白だけの範囲にする", () => {
+    expect(exportRenderOptions(createBoard({ id: "b" }), new Map())).toMatchObject({
+      width: EXPORT_MARGIN * 2,
+      height: EXPORT_MARGIN * 2,
+    });
   });
 });
 
@@ -115,8 +118,9 @@ describe("boardToSvg", () => {
     expect(svg).not.toBeNull();
   });
 
-  it("アイテムが無ければ null", () => {
-    expect(boardToSvg(createBoard({ id: "b" }), new Map(), measure)).toBeNull();
+  it("アイテムが無ければ余白だけの空の SVG にする", () => {
+    const svg = boardToSvg(createBoard({ id: "b" }), new Map(), measure);
+    expect(svg).toContain('width="48" height="48"');
   });
 });
 
@@ -137,14 +141,12 @@ describe("drawBoardForPng", () => {
     expect(mock.callsOf("roundRect").length).toBeGreaterThan(0);
   });
 
-  it("アイテムが無ければ描かない", () => {
+  it("2D コンテキストが取れなければ描かない", () => {
     const canvas = {
       width: 0,
       height: 0,
       getContext: () => null,
     } as unknown as HTMLCanvasElement;
-    expect(drawBoardForPng(createBoard({ id: "b" }), new Map(), canvas)).toBe(
-      false,
-    );
+    expect(drawBoardForPng(sampleBoard(), new Map(), canvas)).toBe(false);
   });
 });

@@ -791,3 +791,117 @@ describe("parseBoardFile: テキストの配置", () => {
     ).toContain('board.items[0].verticalAlign が未知の値です: "baseline"');
   });
 });
+
+describe("parseBoardFile: 文字の大きさの決め方", () => {
+  /** items[0]（付箋）の項目を差し替えた JSON を作る。 */
+  function withSticky(mutate: (sticky: Record<string, unknown>) => void): string {
+    return boardJson((b) => {
+      const items = b["items"] as Record<string, unknown>[];
+      const sticky = { ...items[0] };
+      mutate(sticky);
+      b["items"] = [sticky, ...items.slice(1)];
+    });
+  }
+
+  it("自動の付箋を復元する", () => {
+    const board = parseBoardFile(
+      withSticky((sticky) => {
+        sticky["fontSizeMode"] = "auto";
+      }),
+    );
+    expect(board.items[0]).toMatchObject({ fontSizeMode: "auto" });
+  });
+
+  it("設定が無い古いファイルの付箋は固定のまま読む", () => {
+    // 保存したときの見た目を変えないため、自動にはしない
+    const board = parseBoardFile(
+      withSticky((sticky) => {
+        delete sticky["fontSizeMode"];
+      }),
+    );
+    expect("fontSizeMode" in (board.items[0] ?? {})).toBe(false);
+  });
+
+  it("図形の設定も復元する", () => {
+    const board = parseBoardFile(
+      boardJson((b) => {
+        const items = b["items"] as Record<string, unknown>[];
+        b["items"] = items.map((item) =>
+          item["type"] === "shape" ? { ...item, fontSizeMode: "auto" } : item,
+        );
+      }),
+    );
+    expect(board.items.find((item) => item.type === "shape")).toMatchObject({
+      fontSizeMode: "auto",
+    });
+  });
+
+  it("未知の値はエラーにする", () => {
+    expect(
+      catchError(
+        withSticky((sticky) => {
+          sticky["fontSizeMode"] = "huge";
+        }),
+      ).issues,
+    ).toContain('board.items[0].fontSizeMode が未知の値です: "huge"');
+  });
+});
+
+describe("parseBoardFile: 接続ポイント", () => {
+  /** connectors[0] の項目を差し替えた JSON を作る。 */
+  function withConnector(mutate: (connector: Record<string, unknown>) => void) {
+    return boardJson((b) => {
+      const connectors = b["connectors"] as Record<string, unknown>[];
+      const first = { ...connectors[0] };
+      mutate(first);
+      b["connectors"] = [first, ...connectors.slice(1)];
+    });
+  }
+
+  it("接続ポイントを復元する", () => {
+    const board = parseBoardFile(
+      withConnector((connector) => {
+        connector["fromSide"] = "top";
+        connector["toSide"] = "left";
+      }),
+    );
+    expect(board.connectors[0]).toMatchObject({ fromSide: "top", toSide: "left" });
+  });
+
+  it("接続ポイントが無い古いファイルは自動のまま読む", () => {
+    const board = parseBoardFile(withConnector(() => {}));
+    expect("fromSide" in (board.connectors[0] ?? {})).toBe(false);
+    expect("toSide" in (board.connectors[0] ?? {})).toBe(false);
+  });
+
+  it("未知の辺はエラーにする", () => {
+    expect(
+      catchError(
+        withConnector((connector) => {
+          connector["toSide"] = "center";
+        }),
+      ).issues,
+    ).toContain('board.connectors[0].toSide が未知の値です: "center"');
+  });
+
+  it("保存して読み直しても変わらない", () => {
+    const board = {
+      ...createBoard({ id: "b" }),
+      items: [
+        createStickyNote({ id: "a", x: 0, y: 0 }),
+        createStickyNote({ id: "b", x: 300, y: 0 }),
+      ],
+      connectors: [
+        createConnector({
+          id: "c",
+          fromItemId: "a",
+          toItemId: "b",
+          kind: "polyline",
+          fromSide: "bottom",
+          toSide: "top",
+        }),
+      ],
+    };
+    expect(parseBoardFile(serializeBoard(board))).toEqual(board);
+  });
+});

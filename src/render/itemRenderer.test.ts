@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createImage,
   createShape,
@@ -11,7 +11,9 @@ import {
   drawResizeHandles,
   drawSelectionOutline,
 } from "./itemRenderer";
+import { AUTO_FONT_SIZE_MAX } from "./boxedText";
 import { ITEM_TEXT_COLOR, SELECTION_COLOR, STICKY_PALETTE } from "./palette";
+import { cssFont, fontSizeOf } from "./textMeasure";
 
 describe("drawItem: 付箋", () => {
   const sticky = createStickyNote({
@@ -472,5 +474,55 @@ describe("drawItem: 枠線の太さと破線", () => {
       }),
     );
     expect(mock.callsOf("setLineDash").at(-1)?.args[0]).toEqual([]);
+  });
+});
+
+describe("drawItem: 付箋の文字の大きさ", () => {
+  /** 描いた文字の font 指定（最後に設定したもの）。 */
+  function drawnFont(mock: ReturnType<typeof createMockContext>): unknown {
+    return mock.assignmentsTo("font").at(-1);
+  }
+
+  it("自動なら枠に収まる大きさで描く", () => {
+    const mock = createMockContext();
+    // 1 文字 = 1em として測るので、文章が長いほど小さくなる
+    vi.mocked(mock.ctx.measureText).mockImplementation(
+      (text: string) =>
+        ({ width: [...text].length * fontSizeOf(String(mock.ctx.font)) }) as TextMetrics,
+    );
+    drawItem(
+      mock.ctx,
+      createStickyNote({ id: "s", x: 0, y: 0, text: "メモ" }),
+    );
+    expect(drawnFont(mock)).toBe(cssFont(AUTO_FONT_SIZE_MAX, "Hiragino Sans"));
+  });
+
+  it("長い文章は小さく描く", () => {
+    const mock = createMockContext();
+    vi.mocked(mock.ctx.measureText).mockImplementation(
+      (text: string) =>
+        ({ width: [...text].length * fontSizeOf(String(mock.ctx.font)) }) as TextMetrics,
+    );
+    drawItem(
+      mock.ctx,
+      createStickyNote({ id: "s", x: 0, y: 0, text: "あ".repeat(80) }),
+    );
+    expect(fontSizeOf(String(drawnFont(mock)))).toBeLessThan(AUTO_FONT_SIZE_MAX);
+  });
+
+  it("固定なら設定した大きさで描く", () => {
+    const mock = createMockContext();
+    drawItem(
+      mock.ctx,
+      createStickyNote({
+        id: "s",
+        x: 0,
+        y: 0,
+        text: "メモ",
+        fontSize: 20,
+        fontSizeMode: "fixed",
+      }),
+    );
+    expect(mock.assignmentsTo("font")).toEqual([cssFont(20, "Hiragino Sans")]);
   });
 });

@@ -5,7 +5,7 @@
  * 曲線もベジェを細かく分割した折れ線として同じ計算で扱う。
  */
 
-import { bendSegment, connectorEnds, connectorPath } from "./connectorPath";
+import { bendSegment, connectorEnds, pathOfConnector } from "./connectorPath";
 import type { Board, Connector, ConnectorId, Item } from "./board";
 import { distanceToSegment, type Point } from "./geometry";
 
@@ -53,7 +53,7 @@ export function connectorPolyline(
   fromItem: Item,
   toItem: Item,
 ): readonly Point[] {
-  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
+  const path = pathOfConnector(connector, fromItem, toItem);
   if (path.kind === "polyline") {
     return path.points;
   }
@@ -154,7 +154,7 @@ export function hitTestConnectorEnd(
   }
 
   const reach = CONNECTOR_HANDLE_HIT_RADIUS / scale;
-  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
+  const path = pathOfConnector(connector, fromItem, toItem);
   for (const { end, point: endPoint } of connectorEnds(path)) {
     if (Math.hypot(point.x - endPoint.x, point.y - endPoint.y) <= reach) {
       return { id: connector.id, end };
@@ -199,7 +199,7 @@ export function hitTestConnectorBend(
     return null;
   }
 
-  const path = connectorPath(connector.kind, fromItem, toItem, connector.bend);
+  const path = pathOfConnector(connector, fromItem, toItem);
   const segment = bendSegment(path);
   if (segment === null) {
     return null;

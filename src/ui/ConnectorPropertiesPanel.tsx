@@ -5,8 +5,11 @@
  */
 
 import {
+  ANCHOR_SIDES,
+  attachConnectorEnd,
   CAP_SIZES,
   END_CAPS,
+  type AnchorSide,
   STROKE_STYLES,
   STROKE_WIDTHS,
   type CapSize,
@@ -44,6 +47,17 @@ export const CAP_SIZE_LABELS: Record<CapSize, string> = {
   medium: "中",
   large: "大",
 };
+
+/** 接続ポイントの表示名。 */
+export const ANCHOR_SIDE_LABELS: Record<AnchorSide, string> = {
+  top: "上",
+  right: "右",
+  bottom: "下",
+  left: "左",
+};
+
+/** 接続ポイントの選択肢のうち「自動」を表す値。辺の名前と重ならない。 */
+const AUTO_SIDE = "auto";
 
 export interface ConnectorPropertiesPanelProps {
   readonly connector: Connector;
@@ -142,6 +156,20 @@ export function ConnectorPropertiesPanel({
         </select>
       </label>
 
+      <AnchorSelect
+        label="始点の位置"
+        connector={connector}
+        end="from"
+        onChange={onChange}
+      />
+
+      <AnchorSelect
+        label="終点の位置"
+        connector={connector}
+        end="to"
+        onChange={onChange}
+      />
+
       <label>
         端の大きさ
         <select
@@ -162,5 +190,50 @@ export function ConnectorPropertiesPanel({
         線を削除
       </button>
     </div>
+  );
+}
+
+/**
+ * 片方の端の接続ポイントの選択欄。
+ * 自動を選ぶと、2 つのアイテムの位置関係から向かい合う辺につなぐ。
+ */
+function AnchorSelect({
+  label,
+  connector,
+  end,
+  onChange,
+}: {
+  readonly label: string;
+  readonly connector: Connector;
+  readonly end: "from" | "to";
+  readonly onChange: (connector: Connector) => void;
+}) {
+  const side = end === "from" ? connector.fromSide : connector.toSide;
+  const itemId = end === "from" ? connector.fromItemId : connector.toItemId;
+  return (
+    <label>
+      {label}
+      <select
+        value={side ?? AUTO_SIDE}
+        onChange={(event) => {
+          const value = event.target.value;
+          onChange(
+            attachConnectorEnd(
+              connector,
+              end,
+              itemId,
+              value === AUTO_SIDE ? undefined : (value as AnchorSide),
+            ),
+          );
+        }}
+      >
+        <option value={AUTO_SIDE}>自動</option>
+        {ANCHOR_SIDES.map((value) => (
+          <option key={value} value={value}>
+            {ANCHOR_SIDE_LABELS[value]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

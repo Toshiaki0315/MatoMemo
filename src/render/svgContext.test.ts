@@ -158,3 +158,87 @@ describe("SvgContext: 画像と文書", () => {
     expect(output.trimEnd().endsWith("</svg>")).toBe(true);
   });
 });
+
+describe("SvgContext: 残りの描画命令", () => {
+  it("ベジェ曲線を C 命令にする", () => {
+    const svg = createContext();
+    svg.beginPath();
+    svg.moveTo(0, 0);
+    svg.bezierCurveTo(10, 0, 20, 10, 30, 10);
+    svg.stroke();
+    expect(svg.toSvg(30, 10)).toContain("C10 0 20 10 30 10");
+  });
+
+  it("円は楕円と同じ 2 本の弧で描く", () => {
+    const svg = createContext();
+    svg.beginPath();
+    svg.arc(10, 10, 5, 0, Math.PI * 2);
+    svg.fill();
+    expect(svg.toSvg(20, 20)).toContain("a5 5 0 1 0 10 0");
+  });
+
+  it("開始点の無い arcTo は角へ移動するだけにする", () => {
+    const svg = createContext();
+    svg.beginPath();
+    svg.arcTo(50, 0, 50, 50, 8);
+    svg.stroke();
+    expect(svg.toSvg(50, 50)).toContain('d="M50 0"');
+  });
+
+  it("逆向きに曲がる arcTo は反対回りの弧にする", () => {
+    // (0,0) から右へ進み、(100,0) で上へ曲がる
+    const svg = createContext();
+    svg.beginPath();
+    svg.moveTo(0, 0);
+    svg.arcTo(100, 0, 100, -100, 8);
+    svg.stroke();
+    expect(svg.toSvg(100, 100)).toContain("A8 8 0 0 0 100 -8");
+  });
+
+  it("破線の指定を読み出せる", () => {
+    const svg = createContext();
+    svg.setLineDash([4, 2]);
+    expect(svg.getLineDash()).toEqual([4, 2]);
+  });
+
+  it("退避していないのに restore しても壊れない", () => {
+    const svg = createContext();
+    svg.fillStyle = "#123456";
+    svg.restore();
+    svg.fillRect(0, 0, 1, 1);
+    expect(svg.toSvg(1, 1)).toContain('fill="#123456"');
+  });
+
+  it("右寄せと左寄せの文字の基準を合わせる", () => {
+    const svg = createContext();
+    svg.textAlign = "right";
+    svg.fillText("右", 10, 10);
+    svg.textAlign = "left";
+    svg.fillText("左", 10, 10);
+    const output = svg.toSvg(20, 20);
+    expect(output).toContain('text-anchor="end"');
+    expect(output).toContain('text-anchor="start"');
+  });
+
+  it("ベースラインが top 以外ならそのまま置き、読めない font は既定にする", () => {
+    const svg = createContext();
+    svg.font = "bold";
+    svg.textBaseline = "alphabetic";
+    svg.fillText("文字", 5, 30);
+    const output = svg.toSvg(50, 50);
+    expect(output).toContain('y="30" font-size="16"');
+    expect(output).toContain("font-family='sans-serif'");
+  });
+
+  it("出どころの分からない画像は書き出さない", () => {
+    const svg = createContext();
+    svg.drawImage({} as CanvasImageSource, 0, 0, 10, 10);
+    expect(svg.toSvg(10, 10)).not.toContain("<image");
+  });
+
+  it("測り方を渡さなければ概算で測る", () => {
+    const svg = new SvgContext();
+    svg.font = "10px sans-serif";
+    expect(svg.measureText("あ").width).toBe(10);
+  });
+});

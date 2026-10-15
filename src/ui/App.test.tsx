@@ -737,14 +737,18 @@ describe("App: 重なり順の変更", () => {
     expect(screen.getByRole("menu", { name: "アイテムの操作" })).toBeInTheDocument();
   });
 
-  it("空白部分の右クリックではメニューを出さない", () => {
+  it("空白部分の右クリックでは貼り付けと全選択だけを出す", () => {
     renderApp();
     addThree();
     fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
       clientX: 5,
       clientY: 5,
     });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["ペースト", "すべてを選択"]);
+    // まだ何もコピーしていないので貼れない
+    expect(screen.getByRole("menuitem", { name: "ペースト" })).toBeDisabled();
   });
 
   it("未選択のアイテムを右クリックするとそのアイテムが対象になる", () => {
@@ -1777,6 +1781,253 @@ describe("App: 線の選択と編集", () => {
     fireEvent.click(screen.getByRole("button", { name: "元に戻す" }));
     expect(store.getState().board.connectors[0]).toMatchObject({
       toItemId: ids[1],
+    });
+  });
+});
+
+describe("App: コピー・カット・ペースト", () => {
+  /** 付箋を 1 枚追加する（追加したものは選ばれている）。 */
+  function addSticky() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    return store.getState().board.items.at(-1);
+  }
+
+  function pressCommand(key: string, target: Element | Window = window) {
+    fireEvent.keyDown(target, { key, metaKey: true });
+  }
+
+  it("⌘C → ⌘V で選択中のアイテムを複製する", () => {
+    renderApp();
+    const original = addSticky();
+    pressCommand("c");
+    pressCommand("v");
+    const items = store.getState().board.items;
+    expect(items).toHaveLength(2);
+    expect(items[1]).toMatchObject({
+      x: (original?.x ?? 0) + 24,
+      y: (original?.y ?? 0) + 24,
+    });
+    // 貼り付けたものが選ばれる
+    expect(store.getState().selectedIds).toEqual(new Set([items[1]?.id]));
+  });
+
+  it("⌘X で切り取り、⌘V で元の位置に戻せる", () => {
+    renderApp();
+    const original = addSticky();
+    pressCommand("x");
+    expect(store.getState().board.items).toEqual([]);
+    pressCommand("v");
+    expect(store.getState().board.items[0]).toMatchObject({
+      x: original?.x,
+      y: original?.y,
+    });
+  });
+
+  it("⌘D でずらして複製する", () => {
+    renderApp();
+    addSticky();
+    pressCommand("d");
+    expect(store.getState().board.items).toHaveLength(2);
+    expect(store.getState().clipboard).toBeNull();
+  });
+
+  it("⌘A ですべてを選択する", () => {
+    renderApp();
+    addSticky();
+    addSticky();
+    act(() => store.getState().clearSelection());
+    pressCommand("a");
+    expect(store.getState().selectedIds.size).toBe(2);
+  });
+
+  it("貼り付けは ⌘Z で取り消せる", () => {
+    renderApp();
+    addSticky();
+    pressCommand("c");
+    pressCommand("v");
+    pressCommand("z");
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("文字入力中は入力欄自身のコピー・ペーストに任せる", () => {
+    renderApp();
+    addSticky();
+    pressCommand("c");
+    const input = screen.getByLabelText("ボード名");
+    pressCommand("v", input);
+    pressCommand("a", input);
+    expect(store.getState().board.items).toHaveLength(1);
+    expect(store.getState().selectedIds.size).toBe(1);
+  });
+
+  it("右クリックのメニューからコピー・カット・複製できる", () => {
+    renderApp();
+    const item = addSticky();
+    const rightClickItem = () =>
+      fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+        clientX: (item?.x ?? 0) + 10,
+        clientY: (item?.y ?? 0) + 10,
+      });
+
+    rightClickItem();
+    fireEvent.click(screen.getByRole("menuitem", { name: "複製" }));
+    expect(store.getState().board.items).toHaveLength(2);
+
+    rightClickItem();
+    fireEvent.click(screen.getByRole("menuitem", { name: "コピー" }));
+    expect(store.getState().clipboard?.content.items).toHaveLength(1);
+
+    rightClickItem();
+    fireEvent.click(screen.getByRole("menuitem", { name: "カット" }));
+    expect(store.getState().board.items).toHaveLength(1);
+  });
+
+  it("空白部分のメニューから貼り付けとすべてを選択ができる", () => {
+    renderApp();
+    addSticky();
+    pressCommand("c");
+    const openBlankMenu = () =>
+      fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+        clientX: 5,
+        clientY: 5,
+      });
+
+    openBlankMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "ペースト" }));
+    expect(store.getState().board.items).toHaveLength(2);
+
+    act(() => store.getState().clearSelection());
+    openBlankMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "すべてを選択" }));
+    expect(store.getState().selectedIds.size).toBe(2);
+  });
+
+  it("アイテムが無ければ空白部分のすべてを選択は無効", () => {
+    renderApp();
+    fireEvent.contextMenu(screen.getByTestId("board-canvas"), {
+      clientX: 5,
+      clientY: 5,
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "すべてを選択" }),
+    ).toBeDisabled();
+  });
+});
+
+describe("App: 矢印キーで動かす", () => {
+  function addSticky() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    return store.getState().board.items[0];
+  }
+
+  it("矢印キーで選択中のアイテムを 1 ずつ動かす", () => {
+    renderApp();
+    const before = addSticky();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(store.getState().board.items[0]).toMatchObject({
+      x: (before?.x ?? 0) + 1,
+      y: (before?.y ?? 0) + 1,
+    });
+  });
+
+  it("Shift を押しながらなら 10 ずつ動かす", () => {
+    renderApp();
+    const before = addSticky();
+    fireEvent.keyDown(window, { key: "ArrowLeft", shiftKey: true });
+    fireEvent.keyDown(window, { key: "ArrowUp", shiftKey: true });
+    expect(store.getState().board.items[0]).toMatchObject({
+      x: (before?.x ?? 0) - 10,
+      y: (before?.y ?? 0) - 10,
+    });
+  });
+
+  it("何も選んでいなければ動かさない", () => {
+    renderApp();
+    const before = addSticky();
+    act(() => store.getState().clearSelection());
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(store.getState().board.items[0]).toMatchObject({ x: before?.x });
+  });
+
+  it("文字入力欄や選択欄では、その欄の操作に任せる", () => {
+    renderApp();
+    const before = addSticky();
+    fireEvent.keyDown(screen.getByLabelText("ボード名"), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByLabelText("線の種類"), { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "ArrowRight", metaKey: true });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(store.getState().board.items[0]).toMatchObject({ x: before?.x });
+  });
+});
+
+describe("App: 接続ポイントを指定してつなぐ", () => {
+  /** 横に離した付箋を 2 枚置き、選択を外す。 */
+  function addTwoApart() {
+    fireEvent.click(screen.getByRole("button", { name: "黄色の付箋を追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "青の付箋を追加" }));
+    act(() => {
+      const [first, second] = store.getState().board.items;
+      if (first !== undefined && second !== undefined) {
+        store.getState().replaceItem({ ...second, x: first.x + 400, y: first.y });
+      }
+      store.getState().clearSelection();
+    });
+    return store.getState().board.items;
+  }
+
+  function pointerDownAt(x: number, y: number) {
+    fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
+      button: 0,
+      clientX: x,
+      clientY: y,
+    });
+  }
+
+  it("接続ポイントを押してつなぐと、その辺どうしを結ぶ", () => {
+    renderApp();
+    const [first, second] = addTwoApart();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    // 1 枚目の下の辺の中点、2 枚目の上の辺の中点のすぐ内側
+    pointerDownAt(
+      (first?.x ?? 0) + (first?.width ?? 0) / 2,
+      (first?.y ?? 0) + (first?.height ?? 0) - 3,
+    );
+    pointerDownAt((second?.x ?? 0) + (second?.width ?? 0) / 2, (second?.y ?? 0) + 3);
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      fromSide: "bottom",
+      toSide: "top",
+    });
+  });
+
+  it("接続ポイント以外を押してつなぐと自動になる", () => {
+    renderApp();
+    const [first, second] = addTwoApart();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    pointerDownAt((first?.x ?? 0) + 40, (first?.y ?? 0) + 60);
+    pointerDownAt((second?.x ?? 0) + 40, (second?.y ?? 0) + 60);
+    const connector = store.getState().board.connectors[0];
+    expect(connector).toBeDefined();
+    expect("fromSide" in (connector ?? {})).toBe(false);
+    expect("toSide" in (connector ?? {})).toBe(false);
+  });
+
+  it("線の設定パネルから接続ポイントを変えられる", () => {
+    renderApp();
+    const [first, second] = addTwoApart();
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    pointerDownAt((first?.x ?? 0) + 40, (first?.y ?? 0) + 60);
+    pointerDownAt((second?.x ?? 0) + 40, (second?.y ?? 0) + 60);
+    // つないだ線を選ぶ（2 枚の間、線の高さ）
+    pointerDownAt(
+      ((first?.x ?? 0) + (first?.width ?? 0) + (second?.x ?? 0)) / 2,
+      (first?.y ?? 0) + (first?.height ?? 0) / 2,
+    );
+    fireEvent.change(screen.getByLabelText("終点の位置"), {
+      target: { value: "bottom" },
+    });
+    expect(store.getState().board.connectors[0]).toMatchObject({
+      toSide: "bottom",
     });
   });
 });

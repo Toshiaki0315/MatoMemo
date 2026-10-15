@@ -126,11 +126,14 @@ function FontControls({
       <label>
         サイズ
         <select
-          value={item.fontSize}
-          onChange={(event) =>
-            onChange({ ...item, fontSize: Number(event.target.value) })
-          }
+          value={isAutoSize(item) ? AUTO_SIZE : String(item.fontSize)}
+          onChange={(event) => onChange(withFontSize(item, event.target.value))}
         >
+          {/* 自動は枠の中に文字を書く付箋・図形だけの設定。単体テキストは
+              枠のほうが文章に合わせて伸びるので、大きさは常に固定 */}
+          {item.type === "text" ? null : (
+            <option value={AUTO_SIZE}>自動</option>
+          )}
           {(FONT_SIZES as readonly number[]).includes(item.fontSize) ? null : (
             <option value={item.fontSize}>{item.fontSize}</option>
           )}
@@ -143,4 +146,29 @@ function FontControls({
       </label>
     </>
   );
+}
+
+/** サイズの選択肢のうち「自動」を表す値。数値と重ならない文字列にする。 */
+const AUTO_SIZE = "auto";
+
+/** 文字の大きさが自動か。 */
+function isAutoSize(item: TextEditableItem): boolean {
+  return item.type !== "text" && item.fontSizeMode === "auto";
+}
+
+/**
+ * サイズの選択を反映したアイテムを返す。
+ * 数値を選んだら固定に切り替え、その大きさにする。
+ */
+function withFontSize(
+  item: TextEditableItem,
+  value: string,
+): TextEditableItem {
+  if (item.type === "text") {
+    return { ...item, fontSize: Number(value) };
+  }
+  if (value === AUTO_SIZE) {
+    return { ...item, fontSizeMode: "auto" };
+  }
+  return { ...item, fontSize: Number(value), fontSizeMode: "fixed" };
 }

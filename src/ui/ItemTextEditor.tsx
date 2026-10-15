@@ -6,10 +6,19 @@
  * `<textarea>` をアイテムと同じ位置・大きさで重ねている。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
 import { toScreen, type Viewport } from "../domain/viewport";
+import {
+  LINE_HEIGHT_RATIO,
+  TEXT_PADDING,
+  boxedFontSize,
+} from "../render/boxedText";
 import { ITEM_TEXT_COLOR, SELECTION_COLOR } from "../render/palette";
+import {
+  createCanvasMeasurer,
+  type MeasureTextWidth,
+} from "../render/textMeasure";
 
 /** テキストを内包できるアイテム。 */
 export type TextEditableItem = StickyNoteItem | ShapeItem | TextItem;
@@ -20,9 +29,6 @@ const VERTICAL_ALIGN_TO_FLEX: Record<string, string> = {
   middle: "center",
   bottom: "flex-end",
 };
-
-const LINE_HEIGHT_RATIO = 1.4;
-const TEXT_PADDING = 12;
 
 export interface ItemTextEditorProps {
   readonly item: TextEditableItem;
@@ -35,6 +41,11 @@ export interface ItemTextEditorProps {
    */
   readonly onGrowHeight?: (height: number) => void;
   readonly onClose: () => void;
+  /**
+   * 文字幅の測定。文字の大きさが自動のとき、描画と同じ大きさを求めるのに使う。
+   * 省略時は測定用の Canvas で測る。テストでは差し替える。
+   */
+  readonly measure?: MeasureTextWidth;
 }
 
 export function ItemTextEditor({
@@ -43,12 +54,21 @@ export function ItemTextEditor({
   onChangeText,
   onGrowHeight,
   onClose,
+  measure: measureProp,
 }: ItemTextEditorProps) {
   const [textarea, setTextarea] = useState<HTMLTextAreaElement | null>(null);
+  // 同じ測定関数を使い回し、自動の文字の大きさの控えを効かせる
+  const measure = useMemo(
+    () => measureProp ?? createCanvasMeasurer(),
+    [measureProp],
+  );
 
   const isStandaloneText = item.type === "text";
   const topLeft = toScreen(viewport, { x: item.x, y: item.y });
-  const { fontSize, fontFamily } = item;
+  const { fontFamily } = item;
+  // 付箋・図形は Canvas の描画と同じ規則で大きさを決める。自動のときは
+  // 打ち込むたびに大きさが変わるので、編集中も描画と同じ見た目に保つ
+  const fontSize = isStandaloneText ? item.fontSize : boxedFontSize(item, measure);
 
   /**
    * 開いた直後に入力できるようフォーカスし、カーソルを末尾に置く。

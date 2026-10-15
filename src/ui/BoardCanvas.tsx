@@ -19,7 +19,11 @@ import {
   hitTestConnectorBend,
   hitTestConnectorEnd,
 } from "../domain/connectorHitTest";
-import { bendForPoint } from "../domain/connectorPath";
+import {
+  anchorSideNear,
+  bendForPoint,
+  type Side,
+} from "../domain/connectorPath";
 import { findItem } from "../domain/boardOps";
 import { rectFromCorners, type Point } from "../domain/geometry";
 import { hitTest, itemsWithinRect } from "../domain/hitTest";
@@ -60,6 +64,7 @@ export interface BoardCanvasProps {
     id: ConnectorId,
     end: "from" | "to",
     itemId: ItemId,
+    side?: Side,
   ) => void;
   /** 折れ線の中間の線をドラッグしたとき。bend は始点側 0〜終点側 1。 */
   readonly onBendConnector?: (id: ConnectorId, bend: number) => void;
@@ -99,7 +104,11 @@ export interface BoardCanvasProps {
    */
   readonly connectMode?: boolean;
   /** 接続モードでアイテムが選ばれたとき。 */
-  readonly onPickForConnection?: (id: ItemId) => void;
+  /**
+   * 接続モードでアイテムが選ばれたとき。
+   * @param side 接続ポイントのそばを押したときはその辺。そうでなければ自動
+   */
+  readonly onPickForConnection?: (id: ItemId, side?: Side) => void;
   /** 接続の始点として選ばれているアイテム。 */
   readonly connectingFrom?: ItemId;
   /** アイテムがダブルクリックされたとき。 */
@@ -123,6 +132,13 @@ export type ContextMenuTarget =
 interface Size {
   readonly width: number;
   readonly height: number;
+}
+
+/** 接続ポイントの表示。 */
+interface AnchorHint {
+  readonly itemId: ItemId;
+  /** 吸い付いている辺。どこにも吸い付いていなければ undefined（自動）。 */
+  readonly side: Side | undefined;
 }
 
 /** ドラッグの種類。 */
@@ -196,6 +212,26 @@ export function BoardCanvas({
   >(null);
   /** 範囲ドラッグ中の選択範囲（ワールド座標）。 */
   const [selectionRect, setSelectionRect] = useState<Rect | null>(null);
+  /**
+   * 接続ポイントを出しているアイテムと、吸い付いている辺。
+   * 線をつなぐ・つなぎ直すときに、どこへつながるかを見せる。
+   */
+  const [anchorHint, setAnchorHint] = useState<AnchorHint | null>(null);
+  /** 値が変わったときだけ更新し、ポインタを動かすたびの再描画を避ける。 */
+  const showAnchorHint = (next: AnchorHint | null) => {
+    setAnchorHint((current) =>
+      current?.itemId === next?.itemId && current?.side === next?.side
+        ? current
+        : next,
+    );
+  };
+  // 線をつなぎ終えて接続モードを抜けたら、出していた接続ポイントを消す。
+  // ポインタが動かないままだと、ホバーの処理では消えないため。
+  useEffect(() => {
+    if (!connectMode) {
+      setAnchorHint(null);
+    }
+  }, [connectMode]);
   /**
    * Space が押されているか。押している間はドラッグがパンになる。
    * イベントリスナは一度しか登録しないため ref で読み、カーソルの
@@ -307,8 +343,17 @@ export function BoardCanvas({
       ...(images !== undefined ? { images } : {}),
       ...(editingItemId !== undefined ? { editingItemId } : {}),
       ...(selectionRect !== null ? { selectionRect } : {}),
+      ...(anchorHint !== null
+        ? {
+            anchorItemId: anchorHint.itemId,
+            ...(anchorHint.side !== undefined
+              ? { activeAnchorSide: anchorHint.side }
+              : {}),
+          }
+        : {}),
     });
   }, [
+    anchorHint,
     canvas,
     size,
     viewport,
@@ -367,7 +412,10 @@ export function BoardCanvas({
       if (connectMode) {
         const target = hitTest(board.items, world, viewport.scale);
         if (target !== undefined) {
-          onPickForConnection?.(target.id);
+          onPickForConnection?.(
+            target.id,
+            anchorSideNear(target, world, viewport.scale),
+          );
           return;
         }
         // 空白部分ではキャンバスを動かせるようにしておく
@@ -503,13 +551,19 @@ export function BoardCanvas({
         // 運んだ先のアイテムに繋ぎ替える。アイテムの外では何もしない。
         const world = toWorld(viewport, toCanvasPoint(event));
         const target = hitTest(latest.current.board.items, world, viewport.scale);
-        if (target !== undefined) {
-          latest.current.onReconnect?.(
-            current.mode.id,
-            current.mode.end,
-            target.id,
-          );
+        if (target === undefined) {
+          showAnchorHint(null);
+          return;
         }
+        // 接続ポイントのそばに運べばその辺に、それ以外なら自動でつなぐ
+        const side = anchorSideNear(target, world, viewport.scale);
+        showAnchorHint({ itemId: target.id, side });
+        latest.current.onReconnect?.(
+          current.mode.id,
+          current.mode.end,
+          target.id,
+          side,
+        );
         return;
       }
       if (current.mode.kind === "bend") {
@@ -551,9 +605,22 @@ export function BoardCanvas({
       if (drag.current !== null) {
         return;
       }
-      const { board, viewport, selectedIds, selectedConnectorId } =
+      const { board, viewport, selectedIds, selectedConnectorId, connectMode } =
         latest.current;
       const world = toWorld(viewport, toCanvasPoint(event));
+
+      // 接続モードでは、ポインタの下のアイテムの接続ポイントを見せる
+      const hovered = connectMode
+        ? hitTest(board.items, world, viewport.scale)
+        : undefined;
+      showAnchorHint(
+        hovered === undefined
+          ? null
+          : {
+              itemId: hovered.id,
+              side: anchorSideNear(hovered, world, viewport.scale),
+            },
+      );
 
       setHoveringConnectorEnd(
         hitTestConnectorEnd(board, selectedConnectorId, world, viewport.scale) !==
@@ -610,6 +677,7 @@ export function BoardCanvas({
       setIsPanning(false);
       setDragActive(false);
       setSelectionRect(null);
+      showAnchorHint(null);
       if (current.mode.kind !== "pan" && current.mode.kind !== "select") {
         latest.current.onEndInteraction?.();
       }

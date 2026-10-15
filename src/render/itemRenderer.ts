@@ -11,7 +11,6 @@ import type {
   ImageItem,
   TextAlign,
   TextAlignment,
-  TextStyle,
   TextVerticalAlign,
 } from "../domain/board";
 import type { Rect } from "../domain/geometry";
@@ -26,8 +25,33 @@ import {
   SHAPE_COLORS,
   STICKY_PALETTE,
 } from "./palette";
+import {
+  LINE_HEIGHT_RATIO,
+  TEXT_PADDING,
+  boxedFontSize,
+  type BoxedText,
+} from "./boxedText";
 import { dashPattern } from "./strokePattern";
 import { wrapText } from "./textLayout";
+import { cssFont, type MeasureTextWidth } from "./textMeasure";
+
+/**
+ * 描画中のコンテキストで文字幅を測る関数（コンテキストごとに 1 つ）。
+ * 同じ関数を使い回すことで、自動で求めた文字の大きさの控えが効く。
+ */
+const measurers = new WeakMap<CanvasRenderingContext2D, MeasureTextWidth>();
+
+function measurerFor(ctx: CanvasRenderingContext2D): MeasureTextWidth {
+  let measure = measurers.get(ctx);
+  if (measure === undefined) {
+    measure = (text, font) => {
+      ctx.font = font;
+      return ctx.measureText(text).width;
+    };
+    measurers.set(ctx, measure);
+  }
+  return measure;
+}
 
 /** 読み込み済み画像の参照表。id から描画可能な画像を引く。 */
 export type ImageCache = ReadonlyMap<string, CanvasImageSource>;
@@ -49,12 +73,6 @@ const CORNER_RADIUS = 6;
 
 /** 角丸矩形の角の丸み。付箋と区別が付くよう大きめにする。 */
 const ROUNDED_CORNER_RADIUS = 12;
-
-/** アイテム内テキストの余白。 */
-const TEXT_PADDING = 12;
-
-/** 行送り（フォントサイズに対する倍率）。 */
-const LINE_HEIGHT_RATIO = 1.4;
 
 /** 選択枠の見た目の太さ (px)。拡大率によらず一定に見せる。 */
 const SELECTION_LINE_WIDTH = 2;
@@ -98,7 +116,7 @@ function drawSticky(
   ctx.stroke();
 
   if (!hideText) {
-    drawBoxedText(ctx, item.text, item);
+    drawBoxedText(ctx, item);
   }
 }
 
@@ -134,7 +152,7 @@ function drawShape(
   ctx.setLineDash([]);
 
   if (!hideText) {
-    drawBoxedText(ctx, item.text, item);
+    drawBoxedText(ctx, item);
   }
 }
 
@@ -164,7 +182,7 @@ function drawText(
   if (hideText || item.text === "") {
     return;
   }
-  ctx.font = `${item.fontSize}px "${item.fontFamily}", sans-serif`;
+  ctx.font = cssFont(item.fontSize, item.fontFamily);
   ctx.fillStyle = ITEM_TEXT_COLOR;
   ctx.textAlign = item.align;
   ctx.textBaseline = "top";
@@ -244,18 +262,20 @@ function drawImage(
 /** 枠の中にテキストを描く（付箋・図形の内部テキスト）。 */
 function drawBoxedText(
   ctx: CanvasRenderingContext2D,
-  text: string,
-  item: Rect & TextAlignment & TextStyle,
+  item: BoxedText & TextAlignment,
 ): void {
+  const { text } = item;
   if (text === "") {
     return;
   }
-  ctx.font = `${item.fontSize}px "${item.fontFamily}", sans-serif`;
+  // 自動のときは測るために font を何度か書き換えるので、決めてから設定する
+  const fontSize = boxedFontSize(item, measurerFor(ctx));
+  ctx.font = cssFont(fontSize, item.fontFamily);
   ctx.fillStyle = ITEM_TEXT_COLOR;
   ctx.textAlign = item.align;
   ctx.textBaseline = "top";
 
-  const lineHeight = item.fontSize * LINE_HEIGHT_RATIO;
+  const lineHeight = fontSize * LINE_HEIGHT_RATIO;
   const maxLines = Math.max(
     1,
     Math.floor((item.height - TEXT_PADDING * 2) / lineHeight),
