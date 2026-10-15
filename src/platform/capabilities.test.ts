@@ -16,9 +16,14 @@ import tauriConfig from "../../src-tauri/tauri.conf.json";
 // パッケージの exports で公開されていないので、実ファイルを直接読む
 import dialogPluginSource from "../../node_modules/@tauri-apps/plugin-dialog/dist-js/index.js?raw";
 import fsPluginSource from "../../node_modules/@tauri-apps/plugin-fs/dist-js/index.js?raw";
-import shellSource from "../../src-tauri/src/lib.rs?raw";
+import libSource from "../../src-tauri/src/lib.rs?raw";
+import menuSource from "../../src-tauri/src/menu.rs?raw";
 import boardFileStoreSource from "./tauriBoardFileStore.ts?raw";
 import cursorSource from "./cursor.ts?raw";
+import appMenuSource from "./appMenu.ts?raw";
+
+/** Rust 側のソース（コマンドはモジュールに分けて定義しているので合わせて見る）。 */
+const shellSource = `${libSource}\n${menuSource}`;
 
 /**
  * アプリが使う Tauri の API と、それに必要な権限。
@@ -116,9 +121,11 @@ describe("独自コマンド", () => {
     const invoked = [
       ...boardFileStoreSource.matchAll(/invoke\("([a-z_]+)"/g),
       ...cursorSource.matchAll(/invoke\("([a-z_]+)"/g),
+      ...appMenuSource.matchAll(/invoke\("([a-z_]+)"/g),
     ].map((match) => match[1] as string);
     expect(invoked).toContain("write_text_file_atomic");
     expect(invoked).toContain("set_pan_key_held");
+    expect(invoked).toContain("perform_native_edit");
     for (const command of invoked) {
       expect(shellSource, `${command} が定義されていません`).toContain(
         `fn ${command}(`,
@@ -138,5 +145,28 @@ describe("ウィンドウの設定", () => {
     for (const window of tauriConfig.app.windows) {
       expect(window.dragDropEnabled).toBe(false);
     }
+  });
+});
+
+describe("メニューバー", () => {
+  /** Rust 側のメニューに並べた、フロントエンドに任せる項目の id。 */
+  const rustMenuIds = [...menuSource.matchAll(/^\s*\("([A-Za-z]+)", "/gm)].map(
+    (match) => match[1] as string,
+  );
+
+  it("Rust 側の項目の id はすべてフロントエンドが受け付ける", () => {
+    // id がずれると、メニューを選んでも何も起きない
+    const accepted = [...appMenuSource.matchAll(/^\s*"([A-Za-z]+)",$/gm)].map(
+      (match) => match[1] as string,
+    );
+    expect(rustMenuIds.length).toBeGreaterThan(10);
+    for (const id of [...rustMenuIds, "quit"]) {
+      expect(accepted, `${id} を受け付けていません`).toContain(id);
+    }
+  });
+
+  it("メニューの表示名は日本語にしてある", () => {
+    // 標準の項目は表示名を渡さないと英語になる
+    expect(menuSource).not.toMatch(/\.(hide|hide_others|show_all|services|close_window|minimize|maximize|fullscreen|bring_all_to_front)\(\)/);
   });
 });

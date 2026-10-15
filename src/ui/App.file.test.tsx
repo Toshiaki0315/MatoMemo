@@ -7,6 +7,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MenuAction } from "../platform/appMenu";
 import { StorageError } from "../platform/boardFileStore";
 import {
   createMemoryBoardFileStore,
@@ -932,5 +933,217 @@ describe("画像出力のキャンセル", () => {
     } finally {
       HTMLCanvasElement.prototype.toBlob = original;
     }
+  });
+});
+
+describe("メニューバー", () => {
+  /** メニューの項目を選んだことにできる状態で App を描く。 */
+  function renderWithMenu() {
+    let send: (action: MenuAction) => void = () => {};
+    const nativeEdit = vi.fn();
+    const stop = vi.fn();
+    const view = render(
+      <App
+        store={store}
+        fileStore={fileStore}
+        closeGuard={async () => () => {}}
+        closeWindow={closeWindow}
+        menuActions={async (onAction) => {
+          send = onAction;
+          return stop;
+        }}
+        nativeEdit={nativeEdit}
+      />,
+    );
+    return {
+      choose: (action: MenuAction) => act(() => send(action)),
+      nativeEdit,
+      stop,
+      view,
+    };
+  }
+
+  function zoomLabel(): string {
+    return screen.getByRole("button", { name: "表示倍率をリセット" })
+      .textContent as string;
+  }
+
+  it("ファイル > 書き出す > SVG でボードを SVG として書き出す", async () => {
+    fileStore.exportPath = "/tmp/board.svg";
+    const { choose } = renderWithMenu();
+    click("黄色の付箋を追加");
+    choose("exportSvg");
+    await waitFor(() => {
+      expect(fileStore.files.get("/tmp/board.svg")).toContain("<svg ");
+    });
+  });
+
+  it("アイテムが無ければ画像は書き出さない", async () => {
+    fileStore.exportPath = "/tmp/board.svg";
+    const { choose } = renderWithMenu();
+    choose("exportSvg");
+    choose("exportPng");
+    expect(fileStore.files.size).toBe(0);
+    expect(fileStore.binaryFiles.size).toBe(0);
+  });
+
+  it("ファイル > 書き出す > PNG と Markdown も選べる", async () => {
+    fileStore.exportPath = "/tmp/out";
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
+      callback({
+        arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+      } as Blob);
+    };
+    try {
+      const { choose } = renderWithMenu();
+      click("黄色の付箋を追加");
+      choose("exportPng");
+      await waitFor(() => expect(fileStore.binaryFiles.size).toBe(1));
+      choose("exportMarkdown");
+      await waitFor(() => expect(fileStore.files.size).toBe(1));
+    } finally {
+      HTMLCanvasElement.prototype.toBlob = original;
+    }
+  });
+
+  it("ファイル > 保存 と 別名で保存", async () => {
+    fileStore.savePath = "/tmp/menu.matomemo";
+    const { choose } = renderWithMenu();
+    click("黄色の付箋を追加");
+    choose("save");
+    await waitFor(() => expect(store.getState().isDirty()).toBe(false));
+
+    fileStore.savePath = "/tmp/other.matomemo";
+    click("黄色の付箋を追加");
+    choose("saveAs");
+    await waitFor(() => {
+      expect(fileStore.files.has("/tmp/other.matomemo")).toBe(true);
+    });
+  });
+
+  it("ファイル操作の実行中は保存や書き出しを重ねない", async () => {
+    fileStore.savePath = "/tmp/menu.matomemo";
+    fileStore.exportPath = "/tmp/out";
+    let release = () => {};
+    let saves = 0;
+    const originalSave = fileStore.save.bind(fileStore);
+    fileStore.save = (path, board) => {
+      saves += 1;
+      return new Promise((resolve) => {
+        release = () => resolve(originalSave(path, board));
+      });
+    };
+    const { choose } = renderWithMenu();
+    click("黄色の付箋を追加");
+    act(() => store.getState().markSaved("/tmp/menu.matomemo", store.getState().board));
+    click("黄色の付箋を追加");
+    choose("save");
+    choose("save");
+    choose("saveAs");
+    choose("exportSvg");
+    choose("exportMarkdown");
+    act(() => release());
+    await waitFor(() => expect(store.getState().isDirty()).toBe(false));
+    expect(saves).toBe(1);
+    expect(fileStore.files.has("/tmp/out")).toBe(false);
+  });
+
+  it("ファイル > 新規ボード と 開く は未保存なら確認する", () => {
+    const { choose } = renderWithMenu();
+    click("黄色の付箋を追加");
+    choose("new");
+    expect(screen.getByRole("button", { name: "破棄して続行" })).toBeInTheDocument();
+    click("キャンセル");
+    choose("open");
+    expect(screen.getByRole("button", { name: "破棄して続行" })).toBeInTheDocument();
+  });
+
+  it("終了は未保存なら確認してから閉じる", async () => {
+    const { choose } = renderWithMenu();
+    choose("quit");
+    // 保存済みならそのまま閉じる
+    await waitFor(() => expect(closeWindow).toHaveBeenCalledTimes(1));
+
+    click("黄色の付箋を追加");
+    choose("quit");
+    expect(screen.getByRole("button", { name: "保存せずに終了" })).toBeInTheDocument();
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("編集の項目でボードを編集する", () => {
+    const { choose } = renderWithMenu();
+    click("黄色の付箋を追加");
+    choose("copy");
+    choose("paste");
+    expect(store.getState().board.items).toHaveLength(2);
+    choose("duplicate");
+    expect(store.getState().board.items).toHaveLength(3);
+    choose("selectAll");
+    expect(store.getState().selectedIds.size).toBe(3);
+    choose("cut");
+    expect(store.getState().board.items).toEqual([]);
+    choose("undo");
+    expect(store.getState().board.items).toHaveLength(3);
+    choose("redo");
+    expect(store.getState().board.items).toEqual([]);
+    choose("undo");
+    // 取り消しでアイテムは戻るが選択は戻らないので、選び直してから削除する
+    choose("selectAll");
+    choose("delete");
+    expect(store.getState().board.items).toEqual([]);
+  });
+
+  it("文字の入力中は、編集の項目を入力欄の標準の操作にする", () => {
+    const { choose, nativeEdit } = renderWithMenu();
+    click("黄色の付箋を追加");
+    const input = screen.getByLabelText("ボード名");
+    input.focus();
+    for (const action of ["undo", "redo", "cut", "copy", "paste", "delete", "selectAll"] as const) {
+      choose(action);
+      expect(nativeEdit).toHaveBeenLastCalledWith(action);
+    }
+    // 複製は文字の操作には無いので何もしない
+    choose("duplicate");
+    expect(store.getState().board.items).toHaveLength(1);
+    expect(store.getState().clipboard).toBeNull();
+  });
+
+  it("表示 > 拡大・縮小・実際のサイズ", () => {
+    const { choose } = renderWithMenu();
+    choose("zoomIn");
+    expect(zoomLabel()).toBe("125%");
+    choose("zoomOut");
+    choose("zoomOut");
+    expect(zoomLabel()).toBe("80%");
+    choose("zoomReset");
+    expect(zoomLabel()).toBe("100%");
+  });
+
+  it("閉じるとメニューの購読を止める", async () => {
+    const { stop, view } = renderWithMenu();
+    await act(async () => {});
+    view.unmount();
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it("購読が終わる前に閉じても止める", async () => {
+    const stop = vi.fn();
+    let resolve: (unlisten: () => void) => void = () => {};
+    const view = render(
+      <App
+        store={store}
+        fileStore={fileStore}
+        closeGuard={async () => () => {}}
+        menuActions={() =>
+          new Promise((done) => {
+            resolve = done;
+          })
+        }
+      />,
+    );
+    view.unmount();
+    await act(async () => resolve(stop));
+    expect(stop).toHaveBeenCalled();
   });
 });

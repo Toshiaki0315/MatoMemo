@@ -4,6 +4,9 @@
 //! Rust 側はウィンドウとファイルアクセス権限のホストに徹する。
 //! 例外はファイルの安全な保存で、一時ファイルへの書き込みと rename を
 //! 1 つの操作として行う必要があるため、ここでコマンドとして提供する。
+//! メニューバーも組むが、項目を選んだときの処理はフロントエンドに任せる。
+
+mod menu;
 
 use std::fs;
 use std::io::Write;
@@ -119,6 +122,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .menu(menu::build)
+        .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             install_space_repeat_filter();
@@ -126,7 +131,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             write_text_file_atomic,
-            set_pan_key_held
+            set_pan_key_held,
+            menu::perform_native_edit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

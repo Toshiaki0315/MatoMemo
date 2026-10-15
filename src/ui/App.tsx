@@ -34,6 +34,14 @@ import {
   importImageFile,
   type ImportedImage,
 } from "../platform/imageImport";
+import {
+  isNativeEditAction,
+  listenMenuActions,
+  performNativeEdit,
+  type MenuAction,
+  type MenuActionSubscription,
+  type NativeEditAction,
+} from "../platform/appMenu";
 import { setPanKeyHeld as setPanKeyHeldDefault } from "../platform/cursor";
 import {
   closeWindow as closeWindowDefault,
@@ -110,6 +118,10 @@ export interface AppProps {
   readonly closeWindow?: () => void | Promise<void>;
   /** Space によるパンの開始・終了の通知先。テストでは差し替える。 */
   readonly onPanKeyChange?: (held: boolean) => void;
+  /** メニューバーの項目が選ばれたときの通知の購読。テストでは差し替える。 */
+  readonly menuActions?: MenuActionSubscription;
+  /** 文字の入力中に、入力欄の標準の編集操作を行う手段。テストでは差し替える。 */
+  readonly nativeEdit?: (action: NativeEditAction) => void;
 }
 
 /** 未保存の変更を捨てる確認が要る操作。 */
@@ -140,6 +152,8 @@ export function App({
   closeGuard = guardWindowClose,
   closeWindow = closeWindowDefault,
   onPanKeyChange = setPanKeyHeldDefault,
+  menuActions = listenMenuActions,
+  nativeEdit = performNativeEdit,
 }: AppProps = {}) {
   const board = store((state) => state.board);
   const viewport = store((state) => state.viewport);
@@ -844,6 +858,97 @@ export function App({
     runEditCommand,
     undo,
   ]);
+
+  /**
+   * メニューバーの項目を選んだときの処理。
+   *
+   * キーボードのショートカットは、多くがメニューより先にキー操作として
+   * ここまで届かずに処理される。メニューに来るのは、マウスで選んだとき、
+   * 文字の入力中でキー操作をページが受け取らなかったとき、
+   * キー操作の処理が無い項目（拡大・縮小など）のとき。
+   */
+  const handleMenuAction = (action: MenuAction) => {
+    // 文字の入力中の編集は、入力欄の標準の操作（文字のコピーなど）にする
+    if (isEditableTarget(document.activeElement)) {
+      if (isNativeEditAction(action)) {
+        nativeEdit(action);
+        return;
+      }
+      if (action === "duplicate") {
+        return;
+      }
+    }
+    switch (action) {
+      case "new":
+      case "open":
+        requestAction(action);
+        return;
+      case "save":
+      case "saveAs":
+        if (!busy) {
+          (action === "save" ? handleSave : handleSaveAs)();
+        }
+        return;
+      case "exportMarkdown":
+        if (!busy) {
+          handleExportMarkdown();
+        }
+        return;
+      case "exportSvg":
+      case "exportPng":
+        // ボタンと同じく、書き出すアイテムが無いときや実行中は何もしない
+        if (!busy && board.items.length > 0) {
+          (action === "exportSvg" ? handleExportSvg : handleExportPng)();
+        }
+        return;
+      case "undo":
+        undo();
+        return;
+      case "redo":
+        redo();
+        return;
+      case "delete":
+        handleDeleteSelected();
+        return;
+      case "zoomIn":
+        zoomFromCenter(ZOOM_STEP);
+        return;
+      case "zoomOut":
+        zoomFromCenter(1 / ZOOM_STEP);
+        return;
+      case "zoomReset":
+        setViewport(createViewport());
+        return;
+      case "quit":
+        // 未保存なら確認してから閉じる。最後のウインドウを閉じると終了する
+        requestAction("close");
+        return;
+      default:
+        runEditCommand(action);
+    }
+  };
+  // 購読は一度だけにし、処理は最新のものを呼ぶ
+  const menuHandlerRef = useRef(handleMenuAction);
+  menuHandlerRef.current = handleMenuAction;
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let disposed = false;
+    menuActions((action) => menuHandlerRef.current(action))
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        stop = unlisten;
+      })
+      .catch(() => {
+        // Tauri の外（ブラウザでの開発時など）にはメニューバーが無い
+      });
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, [menuActions]);
 
   // Canvas 外（ツールバーや余白など）にファイルが落とされたときに、
   // ブラウザ（WebKit）がファイルを開いて画面遷移してしまわないよう、
