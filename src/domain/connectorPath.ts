@@ -6,7 +6,13 @@
  * 「常に今の位置から計算する」ことで、追従の実装そのものが不要になる。
  */
 
-import { ANCHOR_SIDES, clampBend, DEFAULT_BEND } from "./board";
+import {
+  ANCHOR_SIDES,
+  clampBend,
+  DEFAULT_BEND,
+  isCornerAnchor,
+  ROUNDED_CORNER_RADIUS,
+} from "./board";
 import type {
   AnchorSide,
   CapSize,
@@ -14,12 +20,19 @@ import type {
   ConnectorKind,
   Item,
 } from "./board";
+import {
+  ROUTE_STUB,
+  routeAround,
+  straightenRoute,
+} from "./connectorRoute";
 import { rectCenter, type Point, type Rect } from "./geometry";
+
+export { ROUTE_STUB };
 
 /** アイテムの輪郭の種類。円だけが楕円、それ以外は矩形として扱う。 */
 export type Outline = "rectangle" | "ellipse";
 
-/** 矩形の辺。 */
+/** 接続ポイントの位置（上下左右の辺と、4 つの角）。 */
 export type Side = AnchorSide;
 
 /**
@@ -42,6 +55,8 @@ export type ConnectorPath =
        * 折れる位置の割合は使わない（false）。省略時は変えられる。
        */
       readonly adjustable?: boolean;
+      /** 角の丸み（ワールド px）。省略時は描画の既定。 */
+      readonly cornerRadius?: number;
     }
   | {
       readonly kind: "curve";
@@ -103,19 +118,109 @@ export function boundaryAnchor(
   return { x: center.x + dx * scale, y: center.y + dy * scale };
 }
 
-/** 指定した辺の中点。円の場合もこの点は楕円上にある。 */
+/**
+ * 接続ポイントの、中心から見た向き。辺は軸の向き、角は斜め。
+ * 角の値は単位ベクトルではなく、各成分が ±1。
+ */
+const SIDE_DIRECTIONS: Record<Side, Point> = {
+  top: { x: 0, y: -1 },
+  topRight: { x: 1, y: -1 },
+  right: { x: 1, y: 0 },
+  bottomRight: { x: 1, y: 1 },
+  bottom: { x: 0, y: 1 },
+  bottomLeft: { x: -1, y: 1 },
+  left: { x: -1, y: 0 },
+  topLeft: { x: -1, y: -1 },
+};
+
+/**
+ * 外接矩形の上の接続ポイント。辺は中点、角は頂点。
+ * 辺の中点は円の場合も楕円上にある。
+ */
 export function sideAnchor(bounds: Rect, side: Side): Point {
   const center = rectCenter(bounds);
-  switch (side) {
-    case "left":
-      return { x: bounds.x, y: center.y };
-    case "right":
-      return { x: bounds.x + bounds.width, y: center.y };
-    case "top":
-      return { x: center.x, y: bounds.y };
-    default:
-      return { x: center.x, y: bounds.y + bounds.height };
+  const direction = SIDE_DIRECTIONS[side];
+  return {
+    x: center.x + (direction.x * bounds.width) / 2,
+    y: center.y + (direction.y * bounds.height) / 2,
+  };
+}
+
+/** 角丸矩形の角の丸み。それ以外は 0（付箋の小さな丸みは無視する）。 */
+function cornerRadiusOf(item: Item): number {
+  return item.type === "shape" && item.shape === "rounded"
+    ? Math.min(ROUNDED_CORNER_RADIUS, item.width / 2, item.height / 2)
+    : 0;
+}
+
+/**
+ * アイテムの接続ポイントの位置。
+ * 角は輪郭の上に置く。円なら斜め 45° の位置、角丸矩形なら丸みの真ん中。
+ * 外接矩形の頂点のままだと、図形から離れた何も無いところに線が付いてしまう。
+ */
+export function anchorPosition(item: Item, side: Side): Point {
+  const bounds = boundsOf(item);
+  if (!isCornerAnchor(side)) {
+    return sideAnchor(bounds, side);
   }
+  const center = rectCenter(bounds);
+  const direction = SIDE_DIRECTIONS[side];
+  const halfWidth = bounds.width / 2;
+  const halfHeight = bounds.height / 2;
+  if (outlineOf(item) === "ellipse") {
+    return {
+      x: center.x + direction.x * halfWidth * Math.SQRT1_2,
+      y: center.y + direction.y * halfHeight * Math.SQRT1_2,
+    };
+  }
+  const inset = cornerRadiusOf(item) * (1 - Math.SQRT1_2);
+  return {
+    x: center.x + direction.x * (halfWidth - inset),
+    y: center.y + direction.y * (halfHeight - inset),
+  };
+}
+
+/**
+ * 点がアイテムの輪郭の内側にあるか。輪郭の上や、輪郭から 0.5px 以内は
+ * 外とみなす（輪郭の上にある接続ポイントから出る線を「通る」と数えないため）。
+ */
+function insideOutline(point: Point, item: Item): boolean {
+  const center = rectCenter(boundsOf(item));
+  const halfWidth = item.width / 2 - OUTLINE_TOLERANCE;
+  const halfHeight = item.height / 2 - OUTLINE_TOLERANCE;
+  const dx = Math.abs(point.x - center.x);
+  const dy = Math.abs(point.y - center.y);
+  if (dx >= halfWidth || dy >= halfHeight) {
+    return false;
+  }
+  if (outlineOf(item) === "ellipse") {
+    return (dx / halfWidth) ** 2 + (dy / halfHeight) ** 2 < 1;
+  }
+  // 角丸矩形の角では、丸みの外側を除く
+  const radius = cornerRadiusOf(item);
+  const cornerX = dx - (halfWidth - radius);
+  const cornerY = dy - (halfHeight - radius);
+  return cornerX <= 0 || cornerY <= 0 || Math.hypot(cornerX, cornerY) < radius;
+}
+
+/** 輪郭の内側かを調べるとき、輪郭の上とみなす幅（ワールド px）。 */
+const OUTLINE_TOLERANCE = 0.5;
+
+/**
+ * 線や曲線が輪郭の内側を通るかを調べるときの区切りの数。
+ * 図形の角をわずかにかすめる程度でも見落とさないよう、細かく取る。
+ */
+const CROSSING_SAMPLES = 128;
+
+/** 線分がアイテムの輪郭の内側を通るか。細かく区切った点で調べる。 */
+function segmentCrossesOutline(a: Point, b: Point, item: Item): boolean {
+  for (let index = 1; index < CROSSING_SAMPLES; index += 1) {
+    const t = index / CROSSING_SAMPLES;
+    if (insideOutline({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, item)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** 2 つのアイテムの位置関係から、どちらの辺で接続するかを決める。 */
@@ -138,18 +243,49 @@ function facingSides(
     : { fromSide: "top", toSide: "bottom", horizontal: false };
 }
 
-/** 辺の外向きの単位ベクトル。 */
-function sideNormal(side: Side): Point {
-  switch (side) {
-    case "left":
-      return { x: -1, y: 0 };
-    case "right":
-      return { x: 1, y: 0 };
-    case "top":
-      return { x: 0, y: -1 };
-    default:
-      return { x: 0, y: 1 };
+/**
+ * 曲線が接続ポイントから出ていく向き（単位ベクトル）。輪郭に垂直な向き。
+ * 円の角は楕円の法線、矩形の角は斜め 45°。
+ */
+function curveNormal(item: Item, side: Side): Point {
+  const direction = SIDE_DIRECTIONS[side];
+  const normal =
+    outlineOf(item) === "ellipse"
+      ? // 楕円の法線は、軸の長さを入れ替えて掛けた向き
+        { x: direction.x * item.height, y: direction.y * item.width }
+      : direction;
+  const length = Math.hypot(normal.x, normal.y);
+  return { x: normal.x / length, y: normal.y / length };
+}
+
+/**
+ * 直交の経路が接続ポイントから出ていく向き。辺はその外向き。
+ * 角は横と縦の 2 通りがあるので、`aim`（相手の端）がより先にある側を選ぶ。
+ */
+function exitDirection(side: Side, anchor: Point, aim: Point): Point {
+  const direction = SIDE_DIRECTIONS[side];
+  if (!isCornerAnchor(side)) {
+    return direction;
   }
+  const ahead = {
+    x: (aim.x - anchor.x) * direction.x,
+    y: (aim.y - anchor.y) * direction.y,
+  };
+  return ahead.x >= ahead.y ? { x: direction.x, y: 0 } : { x: 0, y: direction.y };
+}
+
+/**
+ * 接続ポイントから `direction` へまっすぐ出た先の点。外接矩形から
+ * `ROUTE_STUB` 離す。円の角のように外接矩形の内側にある接続ポイントでも、
+ * 経路の探索は図形の外から始められる。
+ */
+function leadPoint(bounds: Rect, anchor: Point, direction: Point): Point {
+  if (direction.x !== 0) {
+    const edge = direction.x > 0 ? bounds.x + bounds.width : bounds.x;
+    return { x: edge + direction.x * ROUTE_STUB, y: anchor.y };
+  }
+  const edge = direction.y > 0 ? bounds.y + bounds.height : bounds.y;
+  return { x: anchor.x, y: edge + direction.y * ROUTE_STUB };
 }
 
 /** 接続する辺を決める。指定があればそれを、無ければ向かい合う辺を使う。 */
@@ -165,99 +301,145 @@ function resolveSides(
   };
 }
 
-/**
- * 2 点を直線で結ぶ経路。
- * 接続ポイントを指定した端は辺の中点に固定し、自動の端は相手の端
- * （相手も自動なら相手の中心）へ向かう向きで輪郭と交わる点にする。
- */
-function straightPath(
-  from: Rect,
-  to: Rect,
+/** 接続ポイントを指定した線の、両端の点と、そこから出た先の点。 */
+interface AnchoredEnds {
+  readonly from: Rect;
+  readonly to: Rect;
+  readonly start: Point;
+  readonly first: Point;
+  readonly end: Point;
+  readonly last: Point;
+}
+
+/** 接続ポイントの位置と、経路の探索を始める（終える）点を決める。自動の端は向かい合う辺。 */
+function anchoredEnds(
   fromItem: Item,
   toItem: Item,
   sides: ConnectorSides,
-) {
-  const fixedFrom =
-    sides.from === undefined ? undefined : sideAnchor(from, sides.from);
-  const fixedTo = sides.to === undefined ? undefined : sideAnchor(to, sides.to);
-  const fromAnchor =
-    fixedFrom ??
-    boundaryAnchor(from, fixedTo ?? rectCenter(to), outlineOf(fromItem));
-  const toAnchor =
-    fixedTo ??
-    boundaryAnchor(to, fixedFrom ?? rectCenter(from), outlineOf(toItem));
-  return { kind: "polyline", points: [fromAnchor, toAnchor] } as const;
+): AnchoredEnds {
+  const from = boundsOf(fromItem);
+  const to = boundsOf(toItem);
+  const { fromSide, toSide } = resolveSides(from, to, sides);
+  const start = anchorPosition(fromItem, fromSide);
+  const end = anchorPosition(toItem, toSide);
+  return {
+    from,
+    to,
+    start,
+    first: leadPoint(from, start, exitDirection(fromSide, start, end)),
+    end,
+    last: leadPoint(to, end, exitDirection(toSide, end, start)),
+  };
+}
+
+/** 接続ポイントを指定した線の経路。図形を避けて直交する折れ線で結ぶ。 */
+function anchoredRoute(ends: AnchoredEnds): Point[] {
+  const { from, to, start, first, end, last } = ends;
+  // 図形が重なって接続ポイントがふさがれているときは、出た先どうしをそのまま結ぶ
+  return routeAround(start, first, end, last, [from, to]) ?? [start, first, last, end];
 }
 
 /**
- * 辺から垂直に出す最短の長さ（ワールド px）。
- * 接続ポイントのすぐ脇で折れると、線がアイテムに沿って見えてしまう。
+ * 経路の両端に、接続ポイントから出た先の点を入れ直す。
+ * 経路は一直線に並ぶ点を省いているので、出た先の点が消えていることがある。
+ * 直線の線ではこの点まで垂直に出てから斜めに向かうので、残しておく必要がある。
  */
-export const ROUTE_STUB = 24;
+function withLeads(route: readonly Point[], ends: AnchoredEnds): Point[] {
+  const result = [...route];
+  if (!samePoint(result[1] as Point, ends.first)) {
+    result.splice(1, 0, ends.first);
+  }
+  if (!samePoint(result.at(-2) as Point, ends.last)) {
+    result.splice(-1, 0, ends.last);
+  }
+  return result;
+}
+
+function samePoint(a: Point, b: Point): boolean {
+  return a.x === b.x && a.y === b.y;
+}
 
 /**
- * 指定した辺どうしを直交する折れ線で結ぶ。
+ * 2 点を直線で結ぶ経路。
  *
- * どちらの端も、つないだ辺から外へ垂直に出入りする。向きの組み合わせに
- * 応じて、なるべく少ない折れ数で回り込む。
+ * 接続ポイントを指定したときは、図形を避ける経路を求めたうえで、見通せる
+ * ところは斜めにまっすぐつなぐ。辺を指定した端は辺から垂直に出入りする。
+ * 中点からそのまま斜めに引くと、相手が反対側にいるとき線が自分の図形の
+ * 下を通って隠れ、別の辺から出ているように見えてしまうため。
  */
-function orthogonalRoute(
-  start: Point,
-  fromSide: Side,
-  end: Point,
-  toSide: Side,
-): Point[] {
-  const out = sideNormal(fromSide);
-  const into = sideNormal(toSide);
-  // 辺から少し出たところ。回り込むときの折れ目に使う
-  const a = { x: start.x + out.x * ROUTE_STUB, y: start.y + out.y * ROUTE_STUB };
-  const b = { x: end.x + into.x * ROUTE_STUB, y: end.y + into.y * ROUTE_STUB };
-  const fromHorizontal = out.y === 0;
-  const toHorizontal = into.y === 0;
-
-  if (fromHorizontal === toHorizontal) {
-    // 両端が同じ軸の向き。横どうしなら縦の線で、縦どうしなら横の線で渡す
-    const along = fromHorizontal ? "x" : "y";
-    const across = fromHorizontal ? "y" : "x";
-    const at = (main: number, cross: number): Point =>
-      fromHorizontal ? { x: main, y: cross } : { x: cross, y: main };
-
-    if (out[along] !== into[along]) {
-      if ((b[along] - a[along]) * out[along] >= 0) {
-        // 向かい合っていて間に余裕がある: 真ん中で一度だけ渡す
-        const middle = (start[along] + end[along]) / 2;
-        return [start, at(middle, start[across]), at(middle, end[across]), end];
-      }
-      // 向かい合っているが前後が逆（背中合わせ）: 間の位置で横切って回り込む
-      const middle = (start[across] + end[across]) / 2;
-      return [
-        start,
-        a,
-        at(a[along], middle),
-        at(b[along], middle),
-        b,
-        end,
-      ];
-    }
-    // 同じ向き: 外側へ出てから戻る
-    const outer =
-      out[along] > 0 ? Math.max(a[along], b[along]) : Math.min(a[along], b[along]);
-    return [start, at(outer, start[across]), at(outer, end[across]), end];
+function straightPath(
+  fromItem: Item,
+  toItem: Item,
+  sides: ConnectorSides,
+): ConnectorPath {
+  const from = boundsOf(fromItem);
+  const to = boundsOf(toItem);
+  if (sides.from === undefined && sides.to === undefined) {
+    return {
+      kind: "polyline",
+      points: [
+        boundaryAnchor(from, rectCenter(to), outlineOf(fromItem)),
+        boundaryAnchor(to, rectCenter(from), outlineOf(toItem)),
+      ],
+    };
   }
-
-  // 横と縦: 角 1 つで曲がれるならそうする
-  const corner = fromHorizontal
-    ? { x: end.x, y: start.y }
-    : { x: start.x, y: end.y };
-  const leaves =
-    (corner.x - start.x) * out.x + (corner.y - start.y) * out.y > 0;
-  const enters = (corner.x - end.x) * into.x + (corner.y - end.y) * into.y > 0;
-  if (leaves && enters) {
-    return [start, corner, end];
+  const ends = anchoredEnds(fromItem, toItem, sides);
+  const points =
+    directLine(fromItem, toItem, sides) ??
+    straightenRoute(
+      withLeads(anchoredRoute(ends), ends),
+      [from, to],
+      keepCount(sides.from),
+      keepCount(sides.to),
+    );
+  // 自動の端は、隣の点へ向かう向きで輪郭と交わる点にする
+  const last = points.length - 1;
+  if (sides.from === undefined) {
+    points[0] = boundaryAnchor(from, points[1] as Point, outlineOf(fromItem));
   }
-  // 曲がれない向きなら、辺から少し出てから回り込む
-  const via = fromHorizontal ? { x: a.x, y: b.y } : { x: b.x, y: a.y };
-  return [start, a, via, b, end];
+  if (sides.to === undefined) {
+    points[last] = boundaryAnchor(to, points[last - 1] as Point, outlineOf(toItem));
+  }
+  return {
+    kind: "polyline",
+    points,
+    // 点が増えても折れ線の「中間の線」ではないので、掴ませない
+    adjustable: false,
+  };
+}
+
+/**
+ * 経路をまっすぐつなぎ直すとき、端から残す点の数。
+ * 辺を指定した端は、辺から垂直に出る部分（2 点）を残す。
+ * 角と自動の端は、どの向きへ出てもよいので端の点だけ残す。
+ */
+function keepCount(side: Side | undefined): number {
+  return side !== undefined && !isCornerAnchor(side) ? 2 : 1;
+}
+
+/**
+ * 角や自動の端どうしを、どちらの図形も横切らずに結べるなら、その 2 点。
+ * 辺を指定した端があるときや、図形にふさがれるときは null。
+ */
+function directLine(
+  fromItem: Item,
+  toItem: Item,
+  sides: ConnectorSides,
+): Point[] | null {
+  if (keepCount(sides.from) > 1 || keepCount(sides.to) > 1) {
+    return null;
+  }
+  const start =
+    sides.from === undefined ? undefined : anchorPosition(fromItem, sides.from);
+  const end = sides.to === undefined ? undefined : anchorPosition(toItem, sides.to);
+  // 両端とも自動の場合は呼ばれないので、少なくとも一方は角が決まっている
+  const a =
+    start ?? boundaryAnchor(boundsOf(fromItem), end as Point, outlineOf(fromItem));
+  const b = end ?? boundaryAnchor(boundsOf(toItem), a, outlineOf(toItem));
+  if (segmentCrossesOutline(a, b, fromItem) || segmentCrossesOutline(a, b, toItem)) {
+    return null;
+  }
+  return [a, b];
 }
 
 /**
@@ -266,25 +448,21 @@ function orthogonalRoute(
  * @param bend 中間の線の位置。始点側 0〜終点側 1 の割合
  */
 function polylinePath(
-  from: Rect,
-  to: Rect,
+  fromItem: Item,
+  toItem: Item,
   bend: number,
   sides: ConnectorSides,
 ): ConnectorPath {
-  // 接続ポイントを指定したときは、その辺から出入りするよう経路を組む
+  // 接続ポイントを指定したときは、そこから出入りし、図形を避ける経路にする
   if (sides.from !== undefined || sides.to !== undefined) {
-    const { fromSide, toSide } = resolveSides(from, to, sides);
     return {
       kind: "polyline",
-      points: orthogonalRoute(
-        sideAnchor(from, fromSide),
-        fromSide,
-        sideAnchor(to, toSide),
-        toSide,
-      ),
+      points: anchoredRoute(anchoredEnds(fromItem, toItem, sides)),
       adjustable: false,
     };
   }
+  const from = boundsOf(fromItem);
+  const to = boundsOf(toItem);
   const { fromSide, toSide, horizontal } = facingSides(from, to);
   const start = sideAnchor(from, fromSide);
   const end = sideAnchor(to, toSide);
@@ -361,33 +539,83 @@ export function bendForPoint(
 
 /**
  * 3 次ベジェ曲線で結ぶ経路。
- * 制御点を接続する辺の法線方向に張り出させ、辺から垂直に出ていくようにする。
+ * 制御点を接続ポイントで輪郭に垂直な向きに張り出させ、輪郭から垂直に
+ * 出ていくようにする。
  */
-function curvedPath(from: Rect, to: Rect, sides: ConnectorSides) {
-  const { fromSide, toSide } = resolveSides(from, to, sides);
-  const start = sideAnchor(from, fromSide);
-  const end = sideAnchor(to, toSide);
+function curvedPath(
+  fromItem: Item,
+  toItem: Item,
+  sides: ConnectorSides,
+): ConnectorPath {
+  const { fromSide, toSide } = resolveSides(
+    boundsOf(fromItem),
+    boundsOf(toItem),
+    sides,
+  );
+  const start = anchorPosition(fromItem, fromSide);
+  const end = anchorPosition(toItem, toSide);
 
   const distance = Math.hypot(end.x - start.x, end.y - start.y);
   const bulge = Math.max(MIN_CURVE_BULGE, distance * CURVE_BULGE_RATIO);
-  const out = sideNormal(fromSide);
-  const into = sideNormal(toSide);
+  const out = curveNormal(fromItem, fromSide);
+  const into = curveNormal(toItem, toSide);
 
-  return {
-    kind: "curve",
+  const path = {
+    kind: "curve" as const,
     from: start,
     control1: { x: start.x + out.x * bulge, y: start.y + out.y * bulge },
     control2: { x: end.x + into.x * bulge, y: end.y + into.y * bulge },
     to: end,
-  } as const;
+  };
+  // 接続ポイントが相手と反対を向いていると、曲線が図形の下を通って
+  // 隠れる。そのときは図形を避ける経路を、角を大きく丸めて描く
+  if (
+    (sides.from !== undefined || sides.to !== undefined) &&
+    (curveCrosses(path, fromItem) || curveCrosses(path, toItem))
+  ) {
+    return {
+      kind: "polyline",
+      points: anchoredRoute(anchoredEnds(fromItem, toItem, sides)),
+      adjustable: false,
+      cornerRadius: CURVED_ROUTE_RADIUS,
+    };
+  }
+  return path;
 }
 
-/** アイテムの接続ポイント（各辺の中点）。 */
+/** 曲線の代わりに回り込む経路を描くときの、角の丸み（ワールド px）。 */
+const CURVED_ROUTE_RADIUS = 48;
+
+/** 曲線を細かく区切った点のいずれかがアイテムの輪郭の内側にあるか。 */
+function curveCrosses(
+  path: Extract<ConnectorPath, { kind: "curve" }>,
+  item: Item,
+): boolean {
+  for (let index = 1; index < CROSSING_SAMPLES; index += 1) {
+    const t = index / CROSSING_SAMPLES;
+    const u = 1 - t;
+    const x =
+      u * u * u * path.from.x +
+      3 * u * u * t * path.control1.x +
+      3 * u * t * t * path.control2.x +
+      t * t * t * path.to.x;
+    const y =
+      u * u * u * path.from.y +
+      3 * u * u * t * path.control1.y +
+      3 * u * t * t * path.control2.y +
+      t * t * t * path.to.y;
+    if (insideOutline({ x, y }, item)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** アイテムの接続ポイント（上下左右の辺の中点と、4 つの角）。 */
 export function anchorPoints(
   item: Item,
 ): readonly { readonly side: Side; readonly point: Point }[] {
-  const bounds = boundsOf(item);
-  return ANCHOR_SIDES.map((side) => ({ side, point: sideAnchor(bounds, side) }));
+  return ANCHOR_SIDES.map((side) => ({ side, point: anchorPosition(item, side) }));
 }
 
 /** 接続ポイントに吸い付く距離（画面 px）。 */
@@ -430,16 +658,13 @@ export function connectorPath(
   bend: number = DEFAULT_BEND,
   sides: ConnectorSides = {},
 ): ConnectorPath {
-  const from = boundsOf(fromItem);
-  const to = boundsOf(toItem);
-
   switch (kind) {
     case "polyline":
-      return polylinePath(from, to, bend, sides);
+      return polylinePath(fromItem, toItem, bend, sides);
     case "curved":
-      return curvedPath(from, to, sides);
+      return curvedPath(fromItem, toItem, sides);
     default:
-      return straightPath(from, to, fromItem, toItem, sides);
+      return straightPath(fromItem, toItem, sides);
   }
 }
 
@@ -649,5 +874,6 @@ export function trimPath(
     return path;
   }
   points[tipIndex] = moved;
-  return { kind: "polyline", points };
+  // 角の丸みなどの描き方の指定はそのまま引き継ぐ
+  return { ...path, points };
 }

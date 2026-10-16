@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANCHOR_SIDES,
   createConnector,
   createShape,
   createStickyNote,
+  ROUNDED_CORNER_RADIUS,
   type Item,
+  type ShapeKind,
 } from "./board";
 import {
   CAP_LENGTHS,
@@ -20,6 +23,7 @@ import {
   connectorEnds,
   boundaryAnchor,
   connectorPath,
+  anchorPosition,
   sideAnchor,
   type ConnectorPath,
 } from "./connectorPath";
@@ -27,6 +31,11 @@ import {
 /** 指定した位置・大きさの付箋。 */
 function sticky(x: number, y: number, size = 100): Item {
   return createStickyNote({ id: `s-${x}-${y}`, x, y, width: size, height: size });
+}
+
+/** 指定した種類・位置・大きさの図形。 */
+function shape(kind: ShapeKind, x: number, y: number, width: number, height: number): Item {
+  return createShape({ id: `${kind}-${x}-${y}`, shape: kind, x, y, width, height });
 }
 
 /** 折れ線として得られた点列を取り出す。 */
@@ -789,14 +798,24 @@ describe("connectorPath: 接続ポイントの指定", () => {
       expect(points(path)[0]).toEqual({ x: 50, y: 0 });
     });
 
-    it("自動の端は、指定した端の方を向いて輪郭と交わる", () => {
-      // 始点を下の辺 (50, 100) に固定。終点は (300,0)-(400,100) の付箋
+    it("指定した辺からは垂直に少し出てから相手へ向かう", () => {
+      // そのまま斜めに引くと、線が自分の下を通って隠れてしまう
       const path = connectorPath("straight", sticky(0, 0), sticky(300, 0), 0.5, {
         from: "bottom",
       });
-      const end = points(path)[1];
-      // 左の辺のどこかで交わる
-      expect(end?.x).toBe(300);
+      expect(points(path).slice(0, 2)).toEqual([
+        { x: 50, y: 100 },
+        { x: 50, y: 100 + ROUTE_STUB },
+      ]);
+    });
+
+    it("自動の端は、相手が辺から出た先の方を向いて輪郭と交わる", () => {
+      // 終点は (300,0)-(400,100) の付箋。左の辺のどこかで交わる
+      const path = connectorPath("straight", sticky(0, 0), sticky(300, 0), 0.5, {
+        from: "bottom",
+      });
+      expect(points(path)).toHaveLength(3);
+      expect(points(path).at(-1)?.x).toBe(300);
     });
 
     it("両端を指定できる", () => {
@@ -806,8 +825,12 @@ describe("connectorPath: 接続ポイントの指定", () => {
       });
       expect(points(path)).toEqual([
         { x: 50, y: 100 },
+        { x: 50, y: 100 + ROUTE_STUB },
+        { x: 350, y: -ROUTE_STUB },
         { x: 350, y: 0 },
       ]);
+      // 4 点でも折れ線の中間の線ではないので、折れ位置は動かせない
+      expect(bendSegment(path)).toBeNull();
     });
   });
 
@@ -959,14 +982,180 @@ describe("connectorPath: 接続ポイントの指定", () => {
   });
 });
 
+describe("connectorPath: 角の接続ポイント", () => {
+  describe("直線", () => {
+    it("見通せる相手へは、角からまっすぐ斜めに結ぶ", () => {
+      const path = connectorPath("straight", sticky(0, 0), sticky(300, 300), 0.5, {
+        from: "bottomRight",
+        to: "topLeft",
+      });
+      expect(points(path)).toEqual([
+        { x: 100, y: 100 },
+        { x: 300, y: 300 },
+      ]);
+    });
+
+    it("自動の端は、角の方を向いて輪郭と交わる", () => {
+      const path = connectorPath("straight", sticky(0, 0), sticky(300, 0), 0.5, {
+        from: "topRight",
+      });
+      // 角 (100,0) から、相手の中心 (350,50) へ向かう線の上で左の辺と交わる
+      expect(points(path)[0]).toEqual({ x: 100, y: 0 });
+      expect(points(path)[1]?.x).toBe(300);
+      expect(points(path)).toHaveLength(2);
+    });
+
+    it("終点だけ角を指定しても、始点は角の方を向いて輪郭と交わる", () => {
+      const path = connectorPath("straight", sticky(0, 0), sticky(300, 300), 0.5, {
+        to: "topLeft",
+      });
+      expect(points(path)).toEqual([
+        { x: 100, y: 100 },
+        { x: 300, y: 300 },
+      ]);
+    });
+
+    it("円の角からも、見通せれば楕円の上の点からまっすぐ結ぶ", () => {
+      const circle = shape("circle", 0, 0, 100, 100);
+      const path = connectorPath("straight", circle, sticky(300, 300), 0.5, {
+        from: "bottomRight",
+      });
+      expect(points(path)).toHaveLength(2);
+      expect(points(path)[0]).toEqual(anchorPosition(circle, "bottomRight"));
+    });
+
+    it("相手が角の反対側にいれば、図形を回り込む", () => {
+      const path = connectorPath("straight", sticky(0, 0), sticky(-300, 300), 0.5, {
+        from: "topRight",
+        to: "bottomRight",
+      });
+      expect(points(path)[0]).toEqual({ x: 100, y: 0 });
+      expect(points(path).length).toBeGreaterThan(2);
+    });
+
+    it("辺を指定した相手へは、相手の辺から垂直に入る", () => {
+      const path = connectorPath("straight", sticky(0, 0), sticky(300, 300), 0.5, {
+        from: "bottomRight",
+        to: "left",
+      });
+      expect(points(path)[0]).toEqual({ x: 100, y: 100 });
+      expect(points(path).slice(-2)).toEqual([
+        { x: 300 - ROUTE_STUB, y: 350 },
+        { x: 300, y: 350 },
+      ]);
+    });
+  });
+
+  describe("折れ線", () => {
+    it("角からは、相手がより先にある向き（横）へ出る", () => {
+      const path = connectorPath("polyline", sticky(0, 0), sticky(400, -100), 0.5, {
+        from: "topRight",
+        to: "left",
+      });
+      expect(points(path)).toEqual([
+        { x: 100, y: 0 },
+        { x: 250, y: 0 },
+        { x: 250, y: -50 },
+        { x: 400, y: -50 },
+      ]);
+    });
+
+    it("角からは、相手がより先にある向き（縦）へ出る", () => {
+      const path = connectorPath("polyline", sticky(0, 0), sticky(100, -400), 0.5, {
+        from: "topRight",
+        to: "bottom",
+      });
+      expect(points(path)).toEqual([
+        { x: 100, y: 0 },
+        { x: 100, y: -150 },
+        { x: 150, y: -150 },
+        { x: 150, y: -300 },
+      ]);
+    });
+
+    it("円の角からは、楕円の上の点から出る", () => {
+      const circle = shape("circle", 0, 0, 100, 100);
+      const path = connectorPath("polyline", circle, sticky(400, -100), 0.5, {
+        from: "topRight",
+        to: "left",
+      });
+      const start = anchorPosition(circle, "topRight");
+      expect(points(path).slice(0, 2)).toEqual([start, { x: 250, y: start.y }]);
+    });
+  });
+
+  describe("曲線", () => {
+    it("矩形の角からは斜め 45° に出る", () => {
+      const path = connectorPath("curved", sticky(0, 0), sticky(300, 300), 0.5, {
+        from: "bottomRight",
+        to: "topLeft",
+      });
+      if (path.kind !== "curve") {
+        throw new Error("curve ではありません");
+      }
+      expect(path.from).toEqual({ x: 100, y: 100 });
+      expect(path.control1.x - 100).toBeCloseTo(path.control1.y - 100, 10);
+      expect(path.control1.x).toBeGreaterThan(100);
+      expect(path.control2.x - 300).toBeCloseTo(path.control2.y - 300, 10);
+      expect(path.control2.x).toBeLessThan(300);
+    });
+
+    it("円の角からは楕円に垂直な向きに出る", () => {
+      const circle = shape("circle", 0, 0, 200, 100);
+      const path = connectorPath("curved", circle, sticky(400, 300), 0.5, {
+        from: "bottomRight",
+      });
+      if (path.kind !== "curve") {
+        throw new Error("curve ではありません");
+      }
+      // 楕円 (x/100)^2 + (y/50)^2 = 1 の法線は (x/100^2, y/50^2) の向き
+      const start = path.from;
+      const normal = { x: (start.x - 100) / 100 ** 2, y: (start.y - 50) / 50 ** 2 };
+      const out = { x: path.control1.x - start.x, y: path.control1.y - start.y };
+      expect(normal.x * out.y - normal.y * out.x).toBeCloseTo(0, 10);
+      expect(out.x).toBeGreaterThan(0);
+    });
+  });
+});
+
 describe("anchorPoints", () => {
-  it("4 つの辺の中点を返す", () => {
+  it("上下左右の辺の中点と 4 つの角の 8 点を、上から時計回りに返す", () => {
     expect(anchorPoints(sticky(0, 0))).toEqual([
       { side: "top", point: { x: 50, y: 0 } },
+      { side: "topRight", point: { x: 100, y: 0 } },
       { side: "right", point: { x: 100, y: 50 } },
+      { side: "bottomRight", point: { x: 100, y: 100 } },
       { side: "bottom", point: { x: 50, y: 100 } },
+      { side: "bottomLeft", point: { x: 0, y: 100 } },
       { side: "left", point: { x: 0, y: 50 } },
+      { side: "topLeft", point: { x: 0, y: 0 } },
     ]);
+  });
+
+  it("円の角の接続ポイントは、楕円の上の斜め 45° の位置に置く", () => {
+    const circle = shape("circle", 0, 0, 200, 100);
+    for (const { side, point } of anchorPoints(circle)) {
+      // どの点も楕円の上にある
+      expect(((point.x - 100) / 100) ** 2 + ((point.y - 50) / 50) ** 2, side).toBeCloseTo(1, 10);
+    }
+    const topRight = anchorPosition(circle, "topRight");
+    expect(topRight.x).toBeCloseTo(100 + 100 * Math.SQRT1_2, 10);
+    expect(topRight.y).toBeCloseTo(50 - 50 * Math.SQRT1_2, 10);
+  });
+
+  it("角丸矩形の角の接続ポイントは、丸みの真ん中に置く", () => {
+    const rounded = shape("rounded", 0, 0, 200, 100);
+    const point = anchorPosition(rounded, "bottomLeft");
+    const r = ROUNDED_CORNER_RADIUS;
+    // 丸みの中心から半径の距離にある
+    expect(Math.hypot(point.x - r, point.y - (100 - r))).toBeCloseTo(r, 10);
+    expect(point.x).toBeCloseTo(r - r * Math.SQRT1_2, 10);
+  });
+
+  it("辺の中点はどの図形でも外接矩形の辺の中点", () => {
+    for (const kind of ["rectangle", "rounded", "circle"] as const) {
+      expect(anchorPosition(shape(kind, 0, 0, 200, 100), "left")).toEqual({ x: 0, y: 50 });
+    }
   });
 });
 
@@ -986,8 +1175,13 @@ describe("anchorSideNear", () => {
   });
 
   it("小さいアイテムでは最も近い接続ポイントを選ぶ", () => {
-    // 20x20 の付箋では 4 点とも吸い付く範囲に入る
+    // 20x20 の付箋では 8 点とも吸い付く範囲に入る
     expect(anchorSideNear(sticky(0, 0, 20), { x: 10, y: 18 }, 1)).toBe("bottom");
+    expect(anchorSideNear(sticky(0, 0, 20), { x: 17, y: 18 }, 1)).toBe("bottomRight");
+  });
+
+  it("角のそばなら角を返す", () => {
+    expect(anchorSideNear(sticky(0, 0), { x: 3, y: -2 }, 1)).toBe("topLeft");
   });
 });
 
@@ -1004,9 +1198,148 @@ describe("pathOfConnector", () => {
       sticky(0, 0),
       sticky(300, 0),
     );
+    expect(points(path)[0]).toEqual({ x: 50, y: 100 });
+    expect(points(path).at(-1)).toEqual({ x: 350, y: 0 });
+  });
+});
+
+describe("connectorPath: 接続ポイントから出る線は自分の図形を横切らない", () => {
+  /** 図形の内側（縁から 1px 以内を除く）にあるか。円と角丸矩形は見た目の輪郭で。 */
+  function inside(point: { x: number; y: number }, item: Item): boolean {
+    const halfWidth = item.width / 2 - 1;
+    const halfHeight = item.height / 2 - 1;
+    const dx = Math.abs(point.x - (item.x + item.width / 2));
+    const dy = Math.abs(point.y - (item.y + item.height / 2));
+    if (dx >= halfWidth || dy >= halfHeight) {
+      return false;
+    }
+    if (item.type === "shape" && item.shape === "circle") {
+      return (dx / halfWidth) ** 2 + (dy / halfHeight) ** 2 < 1;
+    }
+    if (item.type === "shape" && item.shape === "rounded") {
+      const r = ROUNDED_CORNER_RADIUS;
+      const cornerX = dx - (halfWidth - r);
+      const cornerY = dy - (halfHeight - r);
+      return cornerX <= 0 || cornerY <= 0 || Math.hypot(cornerX, cornerY) < r;
+    }
+    return true;
+  }
+
+  /** 経路を細かく区切った点。直線・折れ線は区間ごとに、曲線は媒介変数で。 */
+  function samplesOf(path: ConnectorPath): { x: number; y: number }[] {
+    const result: { x: number; y: number }[] = [];
+    if (path.kind === "curve") {
+      for (let index = 1; index < 64; index += 1) {
+        const t = index / 64;
+        const u = 1 - t;
+        result.push({
+          x:
+            u * u * u * path.from.x +
+            3 * u * u * t * path.control1.x +
+            3 * u * t * t * path.control2.x +
+            t * t * t * path.to.x,
+          y:
+            u * u * u * path.from.y +
+            3 * u * u * t * path.control1.y +
+            3 * u * t * t * path.control2.y +
+            t * t * t * path.to.y,
+        });
+      }
+      return result;
+    }
+    path.points.forEach((point, index) => {
+      const next = path.points[index + 1];
+      if (next === undefined) {
+        return;
+      }
+      for (let step = 1; step < 32; step += 1) {
+        const t = step / 32;
+        result.push({
+          x: point.x + (next.x - point.x) * t,
+          y: point.y + (next.y - point.y) * t,
+        });
+      }
+    });
+    return result;
+  }
+
+  /** 線を出す側の図形。付箋と、輪郭が外接矩形と異なる円・角丸矩形。 */
+  const owners = [
+    sticky(400, 300, 160),
+    shape("circle", 400, 300, 200, 160),
+    shape("rounded", 400, 300, 160, 160),
+  ];
+  /** 相手の付箋を置く位置（8 方向）。 */
+  const targets = [
+    [800, 340],
+    [800, 0],
+    [400, -300],
+    [0, -300],
+    [0, 340],
+    [0, 700],
+    [400, 700],
+    [800, 700],
+  ] as const;
+
+  for (const kind of ["straight", "curved", "polyline"] as const) {
+    for (const own of owners) {
+      const name = own.type === "shape" ? own.shape : own.type;
+      it(`${kind} (${name}): 両端を指定しても、どちらの図形の内側も通らない`, () => {
+        for (const [x, y] of targets) {
+          const other =
+            own.type === "shape" ? shape(own.shape, x, y, 120, 120) : sticky(x, y, 120);
+          for (const from of ANCHOR_SIDES) {
+            for (const to of ANCHOR_SIDES) {
+              const path = connectorPath(kind, own, other, 0.5, { from, to });
+              const crossing = samplesOf(path).find(
+                (point) => inside(point, own) || inside(point, other),
+              );
+              expect(
+                crossing,
+                `${from} → ${to} (${x}, ${y}) で内側を通る: ${JSON.stringify(crossing)}`,
+              ).toBeUndefined();
+            }
+          }
+        }
+      });
+
+      it(`${kind} (${name}): どの接続ポイントから出る線も、どの方向の相手へも自分の内側を通らない`, () => {
+        for (const side of ANCHOR_SIDES) {
+          for (const [x, y] of targets) {
+            const other = sticky(x, y, 120);
+            const path = connectorPath(kind, own, other, 0.5, { from: side });
+            const crossing = samplesOf(path).find((point) => inside(point, own));
+            expect(
+              crossing,
+              `${side} → (${x}, ${y}) で内側を通る: ${JSON.stringify(crossing)}`,
+            ).toBeUndefined();
+          }
+        }
+      });
+    }
+  }
+});
+
+describe("connectorPath: 図形が重なって接続ポイントがふさがれているとき", () => {
+  it("辺から垂直に出て、そのまま結ぶ", () => {
+    const own = sticky(0, 0);
+    // 右の辺の先を、大きな図形がすっぽり覆っている
+    const cover = createStickyNote({
+      id: "cover",
+      x: 90,
+      y: -200,
+      width: 400,
+      height: 600,
+    });
+    const path = connectorPath("polyline", own, cover, 0.5, {
+      from: "right",
+      to: "left",
+    });
     expect(points(path)).toEqual([
-      { x: 50, y: 100 },
-      { x: 350, y: 0 },
+      { x: 100, y: 50 },
+      { x: 100 + ROUTE_STUB, y: 50 },
+      { x: 90 - ROUTE_STUB, y: 100 },
+      { x: 90, y: 100 },
     ]);
   });
 });

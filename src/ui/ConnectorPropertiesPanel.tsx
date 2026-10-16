@@ -51,9 +51,13 @@ export const CAP_SIZE_LABELS: Record<CapSize, string> = {
 /** 接続ポイントの表示名。 */
 export const ANCHOR_SIDE_LABELS: Record<AnchorSide, string> = {
   top: "上",
+  topRight: "右上",
   right: "右",
+  bottomRight: "右下",
   bottom: "下",
+  bottomLeft: "左下",
   left: "左",
+  topLeft: "左上",
 };
 
 /** 接続ポイントの選択肢のうち「自動」を表す値。辺の名前と重ならない。 */

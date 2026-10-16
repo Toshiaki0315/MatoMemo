@@ -81,7 +81,7 @@ export function drawConnector(
       stroked.to.y,
     );
   } else {
-    tracePolyline(ctx, stroked.points);
+    tracePolyline(ctx, stroked.points, stroked.cornerRadius ?? CORNER_RADIUS);
   }
   ctx.stroke();
   // 矢印や丸は破線にしないので、ここで戻しておく
@@ -142,6 +142,7 @@ function drawCap(
 function tracePolyline(
   ctx: CanvasRenderingContext2D,
   points: readonly Point[],
+  cornerRadius: number,
 ): void {
   let previous: Point | undefined;
 
@@ -157,7 +158,7 @@ function tracePolyline(
     } else {
       // 角では、手前と先の区間の短いほうに合わせた半径で丸める
       const radius = Math.min(
-        CORNER_RADIUS,
+        cornerRadius,
         distance(previous, current) / 2,
         distance(current, next) / 2,
       );

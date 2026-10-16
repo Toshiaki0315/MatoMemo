@@ -147,6 +147,24 @@ describe("ConnectorPropertiesPanel: 接続ポイント", () => {
     );
   });
 
+  it("自動と、上から時計回りの 8 つの位置を選べる", () => {
+    renderPanel();
+    const options = [
+      ...(screen.getByLabelText("始点の位置") as HTMLSelectElement).options,
+    ].map((option) => option.textContent);
+    expect(options).toEqual(["自動", "上", "右上", "右", "右下", "下", "左下", "左", "左上"]);
+  });
+
+  it("角の位置も選べる", () => {
+    const { onChange } = renderPanel();
+    fireEvent.change(screen.getByLabelText("終点の位置"), {
+      target: { value: "topLeft" },
+    });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ toItemId: "b", toSide: "topLeft" }),
+    );
+  });
+
   it("終点の位置を自動に戻せる", () => {
     const { onChange } = renderPanel(
       createConnector({ id: "c1", fromItemId: "a", toItemId: "b", toSide: "top" }),

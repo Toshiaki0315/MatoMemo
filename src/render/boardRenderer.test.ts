@@ -352,7 +352,7 @@ describe("renderBoard: コネクタ", () => {
 describe("renderBoard: 接続ポイント", () => {
   const item = createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 });
 
-  it("指定したアイテムの 4 つの辺の中点に点を描く", () => {
+  it("指定したアイテムの辺の中点と角の 8 点に点を描く", () => {
     const mock = createMockContext();
     renderBoard(mock.ctx, {
       ...baseOptions,
@@ -363,9 +363,13 @@ describe("renderBoard: 接続ポイント", () => {
     const centers = mock.callsOf("arc").map((call) => [call.args[0], call.args[1]]);
     expect(centers).toEqual([
       [50, 0],
+      [100, 0],
       [100, 50],
+      [100, 100],
       [50, 100],
+      [0, 100],
       [0, 50],
+      [0, 0],
     ]);
   });
 
@@ -379,8 +383,9 @@ describe("renderBoard: 接続ポイント", () => {
       activeAnchorSide: "right",
     });
     const radii = mock.callsOf("arc").map((call) => call.args[2] as number);
-    // 右（2 番目）だけが大きい
-    expect(radii[1]).toBeGreaterThan(radii[0] ?? 0);
+    // 右（3 番目）だけが大きい
+    expect(radii[2]).toBeGreaterThan(radii[0] ?? 0);
+    expect(radii[1]).toBe(radii[0]);
     expect(mock.assignmentsTo("fillStyle")).toContain(SELECTION_COLOR);
   });
 
@@ -393,5 +398,68 @@ describe("renderBoard: 接続ポイント", () => {
       anchorItemId: "missing",
     });
     expect(mock.callsOf("arc")).toEqual([]);
+  });
+});
+
+describe("renderBoard: 選択中の線の接続ポイント", () => {
+  const a = createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 });
+  const b = createStickyNote({ id: "b", x: 300, y: 0, width: 100, height: 100 });
+
+  it("両端のアイテムに接続ポイントを出し、つないでいる辺を塗りつぶす", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [a, b],
+      connectors: [
+        createConnector({ id: "c1", fromItemId: "a", toItemId: "b", fromSide: "bottom" }),
+      ],
+      selectedConnectorId: "c1",
+    });
+    const arcs = mock.callsOf("arc");
+    // 端点のハンドル 2 つ + 接続ポイント 8 × 2
+    expect(arcs.length).toBe(18);
+    // a の下の点 (50, 100) だけが大きい
+    const bottom = arcs.find((call) => call.args[0] === 50 && call.args[1] === 100);
+    const top = arcs.find((call) => call.args[0] === 50 && call.args[1] === 0);
+    expect(bottom?.args[2] as number).toBeGreaterThan(top?.args[2] as number);
+  });
+
+  it("端点を運んでいる先のアイテムには、運び先の表示だけを出す", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [a, b],
+      connectors: [createConnector({ id: "c1", fromItemId: "a", toItemId: "b" })],
+      selectedConnectorId: "c1",
+      anchorItemId: "b",
+    });
+    // 端点のハンドル 2 つ + a の 8 つ + b の 8 つ（運び先として）
+    expect(mock.callsOf("arc").length).toBe(18);
+  });
+
+  it("線を選んでいなければ接続ポイントを出さない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [a, b],
+      connectors: [createConnector({ id: "c1", fromItemId: "a", toItemId: "b" })],
+    });
+    expect(mock.callsOf("arc")).toEqual([]);
+  });
+
+  it("つながっている先が見つからなければ、その端の点は出さない", () => {
+    const mock = createMockContext();
+    renderBoard(mock.ctx, {
+      ...baseOptions,
+      showGrid: false,
+      items: [a],
+      connectors: [createConnector({ id: "c1", fromItemId: "a", toItemId: "b" })],
+      selectedConnectorId: "c1",
+    });
+    // 線そのものは描けないが、a の接続ポイントは出す
+    expect(mock.callsOf("arc").length).toBe(8);
   });
 });

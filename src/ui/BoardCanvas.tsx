@@ -16,6 +16,7 @@ import type { Board, ConnectorId, Item, ItemId } from "../domain/board";
 import type { Rect } from "../domain/geometry";
 import {
   hitTestConnector,
+  hitTestConnectorAnchor,
   hitTestConnectorBend,
   hitTestConnectorEnd,
 } from "../domain/connectorHitTest";
@@ -206,6 +207,8 @@ export function BoardCanvas({
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
   /** ポインタが線の端点の上にあるか。掴めることをカーソルで示す。 */
   const [hoveringConnectorEnd, setHoveringConnectorEnd] = useState(false);
+  /** ポインタが選択中の線の接続ポイントの上にあるか。押せることを示す。 */
+  const [hoveringConnectorAnchor, setHoveringConnectorAnchor] = useState(false);
   /** ポインタの下にある折れ線の中間の線の向き。カーソルの見た目に使う。 */
   const [hoveredBendSegment, setHoveredBendSegment] = useState<
     "vertical" | "horizontal" | null
@@ -466,6 +469,25 @@ export function BoardCanvas({
         return;
       }
 
+      // 選択中の線の両端のアイテムに出している接続ポイント。
+      // 押すと、そのアイテムにつながっている端をその辺へ付け替える。
+      // 端点そのものより後に見るので、今の端点の上ならドラッグが優先される。
+      const anchorPick = hitTestConnectorAnchor(
+        board,
+        latest.current.selectedConnectorId,
+        world,
+        viewport.scale,
+      );
+      if (anchorPick !== null) {
+        latest.current.onReconnect?.(
+          anchorPick.id,
+          anchorPick.end,
+          anchorPick.itemId,
+          anchorPick.side,
+        );
+        return;
+      }
+
       // 選択中の折れ線の中間の線。掴んで折れる位置を変えられる。
       const bendGrab = hitTestConnectorBend(
         board,
@@ -625,6 +647,14 @@ export function BoardCanvas({
       setHoveringConnectorEnd(
         hitTestConnectorEnd(board, selectedConnectorId, world, viewport.scale) !==
           null,
+      );
+      setHoveringConnectorAnchor(
+        hitTestConnectorAnchor(
+          board,
+          selectedConnectorId,
+          world,
+          viewport.scale,
+        ) !== null,
       );
 
       const bend = hitTestConnectorBend(
@@ -867,6 +897,7 @@ export function BoardCanvas({
             connectMode,
             hoveringConnectorEnd,
             hoveredBendSegment,
+            hoveringConnectorAnchor,
           ),
         }}
       />
@@ -954,6 +985,7 @@ function currentCursor(
   connectMode: boolean,
   hoveringConnectorEnd: boolean,
   hoveredBendSegment: "vertical" | "horizontal" | null,
+  hoveringConnectorAnchor: boolean,
 ): string {
   if (connectMode) {
     return "crosshair";
@@ -968,6 +1000,10 @@ function currentCursor(
   // 線の端点はアイテムの縁に重なるので、掴めることをカーソルで示す
   if (hoveringConnectorEnd) {
     return "move";
+  }
+  // 選択中の線の接続ポイントは、押すとそこへつなぎ替えられる
+  if (hoveringConnectorAnchor) {
+    return "pointer";
   }
   // 折れ線の中間の線は、縦向きなら左右、横向きなら上下に動かせる
   if (hoveredBendSegment !== null) {

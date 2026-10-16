@@ -30,6 +30,9 @@ export type StickyColor = (typeof STICKY_COLORS)[number];
 export const SHAPE_KINDS = ["rectangle", "rounded", "circle", "line"] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 
+/** 角丸矩形の角の丸み。付箋と区別が付くよう大きめにする。 */
+export const ROUNDED_CORNER_RADIUS = 12;
+
 /** 直線図形の向き。down は左上→右下、up は左下→右上。 */
 export const LINE_DIRECTIONS = ["down", "up"] as const;
 export type LineDirection = (typeof LINE_DIRECTIONS)[number];
@@ -202,16 +205,38 @@ export interface Connector extends StrokeSettings {
    */
   readonly bend: number;
   /**
-   * 始点・終点をつなぐアイテムの辺（接続ポイント）。
+   * 始点・終点をつなぐアイテムの接続ポイント（辺の中点か角）。
    * 省略時は自動で、2 つのアイテムの位置関係から向かい合う辺を選ぶ。
    */
   readonly fromSide?: AnchorSide;
   readonly toSide?: AnchorSide;
 }
 
-/** 線をつなぐ辺。辺の中点が接続ポイントになる。 */
-export const ANCHOR_SIDES = ["top", "right", "bottom", "left"] as const;
+/**
+ * 線をつなぐ位置（接続ポイント）。上から時計回りに、辺の中点と角の 8 点。
+ * 円は外接矩形の角が円の外になるので、角の代わりに斜め 45° の円周上の点を使う。
+ */
+export const ANCHOR_SIDES = [
+  "top",
+  "topRight",
+  "right",
+  "bottomRight",
+  "bottom",
+  "bottomLeft",
+  "left",
+  "topLeft",
+] as const;
 export type AnchorSide = (typeof ANCHOR_SIDES)[number];
+
+/** 角の接続ポイントか。 */
+export function isCornerAnchor(side: AnchorSide): boolean {
+  return (
+    side === "topRight" ||
+    side === "bottomRight" ||
+    side === "bottomLeft" ||
+    side === "topLeft"
+  );
+}
 
 /** 折れ線の中間の線の既定の位置（ちょうど真ん中）。 */
 export const DEFAULT_BEND = 0.5;

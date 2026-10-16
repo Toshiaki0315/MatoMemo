@@ -5,8 +5,20 @@
  * 曲線もベジェを細かく分割した折れ線として同じ計算で扱う。
  */
 
-import { bendSegment, connectorEnds, pathOfConnector } from "./connectorPath";
-import type { Board, Connector, ConnectorId, Item } from "./board";
+import {
+  anchorPoints,
+  bendSegment,
+  connectorEnds,
+  pathOfConnector,
+} from "./connectorPath";
+import type {
+  AnchorSide,
+  Board,
+  Connector,
+  ConnectorId,
+  Item,
+  ItemId,
+} from "./board";
 import { distanceToSegment, type Point } from "./geometry";
 
 /** 線を掴めるとみなす画面上の距離 (px)。 */
@@ -209,4 +221,51 @@ export function hitTestConnectorBend(
     return null;
   }
   return { id: connector.id, verticalSegment: segment.a.x === segment.b.x };
+}
+
+/** 押された接続ポイント。 */
+export interface PickedConnectorAnchor {
+  readonly id: ConnectorId;
+  /** どちらの端の接続ポイントか。 */
+  readonly end: "from" | "to";
+  /** その端がつながっているアイテム。 */
+  readonly itemId: ItemId;
+  readonly side: AnchorSide;
+}
+
+/**
+ * 選択中のコネクタの、両端のアイテムの接続ポイントを押したかを判定する。
+ *
+ * 線を選ぶと両端のアイテムに接続ポイントを出す。押した点の辺へ、
+ * そのアイテムにつながっている端を付け替える。
+ * @param scale 表示倍率。押せる範囲は画面上で一定にしたいので換算する
+ */
+export function hitTestConnectorAnchor(
+  board: Board,
+  connectorId: ConnectorId | undefined,
+  point: Point,
+  scale: number,
+): PickedConnectorAnchor | null {
+  const connector = board.connectors.find(
+    (candidate) => candidate.id === connectorId,
+  );
+  if (connector === undefined) {
+    return null;
+  }
+  const reach = CONNECTOR_HANDLE_HIT_RADIUS / scale;
+  for (const end of ["from", "to"] as const) {
+    const itemId = end === "from" ? connector.fromItemId : connector.toItemId;
+    const item = board.items.find((candidate) => candidate.id === itemId);
+    if (item === undefined) {
+      continue;
+    }
+    for (const anchor of anchorPoints(item)) {
+      if (
+        Math.hypot(point.x - anchor.point.x, point.y - anchor.point.y) <= reach
+      ) {
+        return { id: connector.id, end, itemId, side: anchor.side };
+      }
+    }
+  }
+  return null;
 }

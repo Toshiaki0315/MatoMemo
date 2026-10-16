@@ -325,3 +325,23 @@ describe("drawConnector: 印の手前で線を止める", () => {
     expect(mock.callsOf("arc")[0]?.args.slice(0, 2)).toEqual([100, 100]);
   });
 });
+
+describe("drawConnector: 角の丸み", () => {
+  it("経路に角の丸みの指定があればそれで丸める", () => {
+    const mock = createMockContext();
+    drawConnector(
+      mock.ctx,
+      {
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 200, y: 0 },
+          { x: 200, y: 200 },
+        ],
+        cornerRadius: 48,
+      },
+      1,
+    );
+    expect(mock.callsOf("arcTo")[0]?.args[4]).toBe(48);
+  });
+});

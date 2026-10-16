@@ -140,6 +140,7 @@ function drawItems(
   }
 
   drawSelectionRect(ctx, options);
+  drawSelectedConnectorAnchors(ctx, options, items);
   drawAnchorHint(ctx, options, items);
 
   // 選択枠はすべてのアイテムより前面に描く
@@ -173,15 +174,54 @@ function drawAnchorHint(
   if (item === undefined) {
     return;
   }
-  const scale = options.viewport.scale;
+  drawAnchorPoints(ctx, item, options.activeAnchorSide, options.viewport.scale);
+}
+
+/**
+ * 選択中の線の両端のアイテムに接続ポイントを描く。
+ * 押せば接続位置を変えられることを示し、今つないでいる辺は塗りつぶす。
+ */
+function drawSelectedConnectorAnchors(
+  ctx: CanvasRenderingContext2D,
+  options: RenderBoardOptions,
+  items: readonly Item[],
+): void {
+  const connector = options.connectors?.find(
+    (candidate) => candidate.id === options.selectedConnectorId,
+  );
+  if (connector === undefined) {
+    return;
+  }
+  for (const [itemId, side] of [
+    [connector.fromItemId, connector.fromSide],
+    [connector.toItemId, connector.toSide],
+  ] as const) {
+    // 端点を運んでいる最中のアイテムには、運び先の表示のほうを出す
+    if (itemId === options.anchorItemId) {
+      continue;
+    }
+    const item = items.find((candidate) => candidate.id === itemId);
+    if (item !== undefined) {
+      drawAnchorPoints(ctx, item, side, options.viewport.scale);
+    }
+  }
+}
+
+/** アイテムの接続ポイントを描く。`active` の辺は塗りつぶして大きく描く。 */
+function drawAnchorPoints(
+  ctx: CanvasRenderingContext2D,
+  item: Item,
+  active: AnchorSide | undefined,
+  scale: number,
+): void {
   const radius = ANCHOR_POINT_RADIUS / scale;
   ctx.lineWidth = 2 / scale;
   ctx.strokeStyle = SELECTION_COLOR;
   for (const { side, point } of anchorPoints(item)) {
-    const active = side === options.activeAnchorSide;
+    const isActive = side === active;
     ctx.beginPath();
-    ctx.arc(point.x, point.y, active ? radius * 1.4 : radius, 0, Math.PI * 2);
-    ctx.fillStyle = active ? SELECTION_COLOR : "#FFFFFF";
+    ctx.arc(point.x, point.y, isActive ? radius * 1.4 : radius, 0, Math.PI * 2);
+    ctx.fillStyle = isActive ? SELECTION_COLOR : "#FFFFFF";
     ctx.fill();
     ctx.stroke();
   }

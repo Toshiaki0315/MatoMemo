@@ -1716,3 +1716,28 @@ describe("BoardCanvas: 接続ポイントの表示の後始末", () => {
     expect(canvasStub.mock.callsOf("arc")).toEqual([]);
   });
 });
+
+describe("BoardCanvas: 選んだ線の接続位置をクリックで変える", () => {
+  it("両端のアイテムの接続ポイントを押すと、その辺へつなぎ替える", () => {
+    const { canvas, onReconnect, onSelect } = renderCanvas({
+      board: boardWithConnector(),
+      selectedConnectorId: "c1",
+    });
+    // a の下の辺の中点 (50, 100)
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 98 });
+    expect(onReconnect).toHaveBeenCalledWith("c1", "from", "a", "bottom");
+    // アイテムの選択にはならない（線は選んだまま）
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("接続ポイントの上ではカーソルを指の形にする", () => {
+    const { canvas } = renderCanvas({
+      board: boardWithConnector(),
+      selectedConnectorId: "c1",
+    });
+    fireEvent.pointerMove(canvas, { clientX: 50, clientY: 2 });
+    expect(canvas.style.cursor).toBe("pointer");
+    fireEvent.pointerMove(canvas, { clientX: 200, clientY: 300 });
+    expect(canvas.style.cursor).toBe("default");
+  });
+});

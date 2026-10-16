@@ -5,7 +5,7 @@
  * ここではワールド座標をそのまま使う。
  */
 
-import { lineEndpoints } from "../domain/board";
+import { lineEndpoints, ROUNDED_CORNER_RADIUS } from "../domain/board";
 import type { Item, ShapeItem, StickyNoteItem, TextItem } from "../domain/board";
 import type {
   ImageItem,
@@ -70,9 +70,6 @@ export interface DrawItemOptions {
 
 /** 付箋・図形の角の丸み。 */
 const CORNER_RADIUS = 6;
-
-/** 角丸矩形の角の丸み。付箋と区別が付くよう大きめにする。 */
-const ROUNDED_CORNER_RADIUS = 12;
 
 /** 選択枠の見た目の太さ (px)。拡大率によらず一定に見せる。 */
 const SELECTION_LINE_WIDTH = 2;

@@ -1190,8 +1190,8 @@ describe("App: コネクタ", () => {
     const item = store.getState().board.items[index];
     fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
       button: 0,
-      clientX: (item?.x ?? 0) + 10,
-      clientY: (item?.y ?? 0) + 10,
+      clientX: (item?.x ?? 0) + 30,
+      clientY: (item?.y ?? 0) + 30,
     });
   }
 
@@ -1582,8 +1582,8 @@ describe("App: 選択したまま接続モードに入る", () => {
     const item = store.getState().board.items[index];
     fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
       button: 0,
-      clientX: (item?.x ?? 0) + 10,
-      clientY: (item?.y ?? 0) + 10,
+      clientX: (item?.x ?? 0) + 30,
+      clientY: (item?.y ?? 0) + 30,
     });
   }
 
@@ -1656,8 +1656,8 @@ describe("App: 線の選択と編集", () => {
       const item = items[index];
       fireEvent.pointerDown(screen.getByTestId("board-canvas"), {
         button: 0,
-        clientX: (item?.x ?? 0) + 10,
-        clientY: (item?.y ?? 0) + 10,
+        clientX: (item?.x ?? 0) + 30,
+        clientY: (item?.y ?? 0) + 30,
       });
     }
     // 線がつながると接続モードは自動で終わる

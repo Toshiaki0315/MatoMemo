@@ -7,6 +7,7 @@ import {
   connectorPolyline,
   distanceToSegment,
   hitTestConnector,
+  hitTestConnectorAnchor,
   hitTestConnectorBend,
   hitTestConnectorEnd,
 } from "./connectorHitTest";
@@ -343,5 +344,62 @@ describe("hitTestConnectorBend: 接続ポイントを指定した線", () => {
     );
     // 自動なら掴める位置 (中間の線 x:200)
     expect(hitTestConnectorBend(board, "c1", { x: 200, y: 150 }, 1)).toBeNull();
+  });
+});
+
+describe("hitTestConnectorAnchor", () => {
+  /** a (0,0)-(100,100) と b (300,0)-(400,100) を結ぶ線。 */
+  function connected() {
+    let board = createBoard({ id: "b" });
+    board = addItem(
+      board,
+      createStickyNote({ id: "a", x: 0, y: 0, width: 100, height: 100 }),
+    );
+    board = addItem(
+      board,
+      createStickyNote({ id: "b", x: 300, y: 0, width: 100, height: 100 }),
+    );
+    return addConnector(
+      board,
+      createConnector({ id: "c1", fromItemId: "a", toItemId: "b" }),
+    );
+  }
+
+  it("始点側のアイテムの接続ポイントを押すと、始点をその辺へ", () => {
+    expect(hitTestConnectorAnchor(connected(), "c1", { x: 50, y: 98 }, 1)).toEqual({
+      id: "c1",
+      end: "from",
+      itemId: "a",
+      side: "bottom",
+    });
+  });
+
+  it("終点側のアイテムの接続ポイントを押すと、終点をその辺へ", () => {
+    expect(hitTestConnectorAnchor(connected(), "c1", { x: 350, y: 2 }, 1)).toEqual({
+      id: "c1",
+      end: "to",
+      itemId: "b",
+      side: "top",
+    });
+  });
+
+  it("接続ポイントから離れていれば何も押していない", () => {
+    expect(hitTestConnectorAnchor(connected(), "c1", { x: 50, y: 50 }, 1)).toBeNull();
+  });
+
+  it("線を選んでいなければ押せない", () => {
+    expect(
+      hitTestConnectorAnchor(connected(), undefined, { x: 50, y: 98 }, 1),
+    ).toBeNull();
+  });
+
+  it("つながっているアイテムが見つからない端は飛ばす", () => {
+    const board = connected();
+    const broken = { ...board, items: board.items.slice(1) };
+    // a が無いので始点側は見ない。終点側は押せる
+    expect(hitTestConnectorAnchor(broken, "c1", { x: 50, y: 98 }, 1)).toBeNull();
+    expect(hitTestConnectorAnchor(broken, "c1", { x: 350, y: 2 }, 1)).toMatchObject({
+      end: "to",
+    });
   });
 });
